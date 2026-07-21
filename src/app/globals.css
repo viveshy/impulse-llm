@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Impulse - design tokens (Tailwind v4 CSS-first theme)
+   Restrained, near-monochrome. Color communicates meaning only.
+   ============================================================ */
+@theme {
+  --color-bg: #0b0b0c;
+  --color-panel: #0d0d0f;
+  --color-elevated: #161619;
+  --color-hover: #101013;
+
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-2: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  --color-ink: #f3f3f4;
+  --color-ink-2: #b7b7be;
+  --color-ink-3: #8c8c95;
+  --color-ink-4: #6a6a73;
+
+  /* accent - selection / focus / link only. never fills or glows. */
+  --color-accent: #8e8cf0;
+  --color-accent-dim: rgba(142, 140, 240, 0.12);
+  --color-accent-line: rgba(142, 140, 240, 0.5);
+
+  /* semantic status only (+ icon/label, never color alone) */
+  --color-ok: #5bb98b;
+  --color-warn: #d9a441;
+  --color-err: #e5686a;
+
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+/* Always reserve the scrollbar gutter so content doesn't shift between a scrolling
+   page (landing) and a non-scrolling one (the app shell). */
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-accent-dim);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent-line);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+
+/* thin, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

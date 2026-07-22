@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { getDataSource } from "@/lib/data";
+import { MODELS_PAGE_SIZE } from "@/lib/data/query";
 import { parseModelQuery } from "@/lib/models-query-url";
 import { ModelsExplorer } from "@/components/models/ModelsExplorer";
 
@@ -18,8 +19,8 @@ export default async function ModelsPage({ searchParams }: { searchParams: Searc
   const query = parseModelQuery(params);
 
   const ds = getDataSource();
-  const [models, providers, facets] = await Promise.all([
-    ds.getModels(query),
+  const [page, providers, facets] = await Promise.all([
+    ds.getModelsPage(query, null, MODELS_PAGE_SIZE),
     ds.getProviders(),
     ds.getFacets(),
   ]);
@@ -28,7 +29,7 @@ export default async function ModelsPage({ searchParams }: { searchParams: Searc
     <Suspense fallback={<div className="p-6 text-[15px] text-ink-4">Loading…</div>}>
       <ModelsExplorer
         initialQuery={query}
-        initialModels={models}
+        initialPage={page}
         initialProviders={providers}
         initialFacets={facets}
       />

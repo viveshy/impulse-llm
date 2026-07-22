@@ -20,7 +20,7 @@ import type {
   Provider,
 } from "@/lib/domain/types";
 import type { DataSource } from "./data-source";
-import { computeFacets, matchesQuery, sortModels } from "./query";
+import { computeFacets, matchesQuery, type ModelPage, paginateModels, sortModels } from "./query";
 
 const u = <T,>(v: T | null | undefined): T | undefined => v ?? undefined;
 
@@ -249,6 +249,17 @@ export class HttpDataSource implements DataSource {
     const providerName = (pid: string) => providers.find((p) => p.id === pid)?.name ?? pid;
     const filtered = models.filter((m) => matchesQuery(m, query, providerName));
     return sortModels(filtered, query.sort);
+  }
+
+  async getModelsPage(
+    query: ModelQuery = {},
+    cursor: string | null = null,
+    limit = 50,
+  ): Promise<ModelPage> {
+    const { models, providers } = await this.load();
+    const providerName = (pid: string) => providers.find((p) => p.id === pid)?.name ?? pid;
+    const filtered = sortModels(models.filter((m) => matchesQuery(m, query, providerName)), query.sort);
+    return paginateModels(filtered, { cursor, limit });
   }
 
   async getFacets(): Promise<Facets> {

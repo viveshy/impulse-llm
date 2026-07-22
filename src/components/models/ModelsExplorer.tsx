@@ -2,25 +2,25 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { useFacets, useModels, useProviders } from "@/lib/query/hooks";
+import { useFacets, useModelsInfinite, useProviders } from "@/lib/query/hooks";
 import { parseModelQuery, serializeModelQuery } from "@/lib/models-query-url";
 import { useModelsView } from "@/lib/prefs";
-import type { Facets, Model, ModelQuery, Provider } from "@/lib/domain/types";
+import type { Facets, ModelQuery, Provider } from "@/lib/domain/types";
+import type { ModelPage } from "@/lib/data/query";
 import { Topbar } from "@/components/layout/Topbar";
 import { SearchField } from "@/components/common/SearchField";
 import { FilterBar } from "./FilterBar";
 import { ModelList } from "./ModelList";
 import { ModelCard } from "./ModelCard";
 
-
 export function ModelsExplorer({
   initialQuery,
-  initialModels,
+  initialPage,
   initialProviders,
   initialFacets,
 }: {
   initialQuery: ModelQuery;
-  initialModels: Model[];
+  initialPage: ModelPage;
   initialProviders: Provider[];
   initialFacets: Facets;
 }) {
@@ -29,16 +29,23 @@ export function ModelsExplorer({
   const query = useMemo(() => parseModelQuery(searchParams), [searchParams]);
   const [view, setView] = useModelsView();
 
-  // Seed React Query with server data only for the query the server rendered,
-  // so the first client render matches the server exactly (no hydration drift).
+  // Seed React Query with the server's first page only for the query the server
+  // rendered, so the first client render matches the server exactly (no hydration
+  // drift) and switches to live cursor pagination as soon as filters change.
   const isInitialQuery = JSON.stringify(query) === JSON.stringify(initialQuery);
 
-  const { data: models = initialModels } = useModels(
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useModelsInfinite(
     query,
-    isInitialQuery ? initialModels : undefined,
+    isInitialQuery ? initialPage : undefined,
   );
   const { data: providers = initialProviders } = useProviders(initialProviders);
   const { data: facets = initialFacets } = useFacets(initialFacets);
+
+  const models = useMemo(
+    () => data?.pages.flatMap((p) => p.items) ?? initialPage.items,
+    [data, initialPage],
+  );
+  const total = data?.pages[0]?.total ?? initialPage.total;
 
   const providerName = useMemo(() => new Map(providers.map((p) => [p.id, p.name])), [providers]);
   const monogram = useMemo(() => new Map(providers.map((p) => [p.id, p.monogram])), [providers]);
@@ -68,7 +75,7 @@ export function ModelsExplorer({
         onChange={onChange}
         view={view}
         onViewChange={setView}
-        count={models.length}
+        count={total}
       />
 
       {view === "list" ? (
@@ -85,6 +92,21 @@ export function ModelsExplorer({
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {hasNextPage && (
+        <div className="flex flex-none items-center justify-center border-t border-border py-[10px]">
+          <button
+            type="button"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="rounded-[7px] border border-border-strong px-[14px] py-[7px] text-[14px] text-ink-2 transition-colors hover:text-ink disabled:opacity-50"
+          >
+            {isFetchingNextPage
+              ? "Loading…"
+              : `Load more (${Math.max(0, total - models.length)} remaining)`}
+          </button>
         </div>
       )}
     </>

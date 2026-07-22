@@ -51,6 +51,31 @@ export function sortModels(list: Model[], sort: ModelQuery["sort"] = "popularity
   return out;
 }
 
+export const MODELS_PAGE_SIZE = 50;
+
+export interface ModelPage {
+  items: Model[];
+  /** The last item's id, to pass back as `cursor` for the next page. null when exhausted. */
+  nextCursor: string | null;
+  /** Total matching count across all pages (same value on every page of one query). */
+  total: number;
+}
+
+/**
+ * Cursor pagination over an already filtered+sorted list. The cursor is a model id
+ * (opaque to callers): we resume right after that id in the CURRENT sort order, rather
+ * than an offset, so a stale/unknown cursor degrades gracefully (starts over) instead of
+ * skipping or duplicating rows if the underlying catalog changed between requests.
+ */
+export function paginateModels(models: Model[], opts: { cursor?: string | null; limit: number }): ModelPage {
+  const { cursor, limit } = opts;
+  const start = cursor ? Math.max(0, models.findIndex((m) => m.id === cursor) + 1) : 0;
+  const items = models.slice(start, start + limit);
+  const last = items[items.length - 1];
+  const nextCursor = last && start + limit < models.length ? last.id : null;
+  return { items, nextCursor, total: models.length };
+}
+
 export function computeFacets(models: Model[], providers: Provider[]): Facets {
   const visible = models.filter((m) => m.deprecation !== "deprecated");
 

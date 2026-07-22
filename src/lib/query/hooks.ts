@@ -1,8 +1,9 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { serializeModelQuery } from "@/lib/models-query-url";
 import type { Facets, Model, ModelQuery, Provider } from "@/lib/domain/types";
+import { MODELS_PAGE_SIZE, type ModelPage } from "@/lib/data/query";
 import { qk } from "./keys";
 
 /**
@@ -24,6 +25,27 @@ export function useModels(query: ModelQuery = {}, initialData?: Model[]) {
     queryFn: () => getJson<Model[]>(`/api/models${qs ? `?${qs}` : ""}`),
     placeholderData: keepPreviousData,
     initialData,
+  });
+}
+
+/**
+ * Cursor-paginated models for the list UI. Seeded with the server's first page
+ * (`initialPage`) so hydration matches exactly; loading more fetches the next
+ * window via /api/models/paginated using the previous page's cursor.
+ */
+export function useModelsInfinite(query: ModelQuery = {}, initialPage?: ModelPage) {
+  const qs = serializeModelQuery(query);
+  return useInfiniteQuery({
+    queryKey: qk.modelsInfinite(query),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams(qs);
+      params.set("limit", String(MODELS_PAGE_SIZE));
+      if (pageParam) params.set("cursor", pageParam);
+      return getJson<ModelPage>(`/api/models/paginated?${params.toString()}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialData: initialPage ? { pages: [initialPage], pageParams: [null] } : undefined,
   });
 }
 

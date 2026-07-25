@@ -36,20 +36,27 @@ export function CommandMenu() {
     [providers],
   );
 
-  // We filter ourselves and render only the top hits. Handing cmdk all ~3k models
-  // made it score every item on each keystroke, which froze the menu.
+  // We filter ourselves and render only the top hits. Handing cmdk all ~3k models made it
+  // score every item on each keystroke, which froze the menu - so once a search narrows the
+  // pool we can afford to show a lot more than the empty-state browse cap.
   const needle = q.trim().toLowerCase();
+  const MODEL_BROWSE_CAP = 8;
+  const MODEL_SEARCH_CAP = 30;
 
-  const modelHits = useMemo(() => {
-    const base = needle
-      ? models.filter((m) =>
-          `${m.name} ${providerName.get(m.providerId) ?? ""} ${m.family ?? ""} ${(m.tags ?? []).join(" ")}`
-            .toLowerCase()
-            .includes(needle),
-        )
-      : models;
-    return base.slice(0, 8);
-  }, [models, needle, providerName]);
+  const modelMatches = useMemo(
+    () =>
+      needle
+        ? models.filter((m) =>
+            `${m.name} ${providerName.get(m.providerId) ?? ""} ${m.family ?? ""} ${(m.tags ?? []).join(" ")}`
+              .toLowerCase()
+              .includes(needle),
+          )
+        : models,
+    [models, needle, providerName],
+  );
+  const modelCap = needle ? MODEL_SEARCH_CAP : MODEL_BROWSE_CAP;
+  const modelHits = useMemo(() => modelMatches.slice(0, modelCap), [modelMatches, modelCap]);
+  const modelOverflow = Math.max(0, modelMatches.length - modelHits.length);
 
   const providerHits = useMemo(() => {
     const base = needle
@@ -124,6 +131,11 @@ export function CommandMenu() {
                 </span>
               </Command.Item>
             ))}
+            {modelOverflow > 0 && (
+              <div className="px-[10px] py-[6px] text-[13px] text-ink-4">
+                +{modelOverflow} more - keep typing to narrow it down
+              </div>
+            )}
           </Command.Group>
 
           <Command.Group heading="Providers" className={providerHits.length ? groupClass : "hidden"}>

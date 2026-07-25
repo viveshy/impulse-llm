@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, Settings } from "lucide-react";
 import { getDataSource } from "@/lib/data";
 import { CAPABILITY_LABELS } from "@/lib/domain/capabilities";
-import type { Model } from "@/lib/domain/types";
+import type { Model, ProviderCategory } from "@/lib/domain/types";
 import { formatCount, formatPrice, formatTokens, relativeFromNow } from "@/lib/utils/format";
 import { LandingSearch } from "@/components/landing/LandingSearch";
 import { NavSearch } from "@/components/layout/NavSearch";
@@ -29,10 +29,15 @@ const NAV = [
 
 const RELEASE_WINDOW_DAYS = 15;
 
-// A release is a *model* event, not a listing: the same model is re-listed by every host
-// (Azure/Bedrock/Vertex…). Collapse to one card, attributed to the lab that shipped it.
+// A release is a *lab* event, not a listing: clouds (Bedrock/Vertex/Azure…) just expose
+// someone else's model over their own API - they never count as the origin of a release.
+// Collapse the lab's own listing across any duplicate names, attributed to that lab.
 // (Plain function, not a component - so the per-request `Date.now()` read is fine here.)
-function pickReleases(models: Model[], providerNameOf: (id: string) => string) {
+function pickReleases(
+  models: Model[],
+  providerNameOf: (id: string) => string,
+  providerCategoryOf: (id: string) => ProviderCategory | undefined,
+) {
   const releaseKey = (name: string) =>
     name
       .split("/")
@@ -45,6 +50,10 @@ function pickReleases(models: Model[], providerNameOf: (id: string) => string) {
 
   const byNewest = models
     .filter((m) => m.releaseDate)
+    .filter((m) => {
+      const category = providerCategoryOf(m.providerId);
+      return category === "frontier" || category === "open";
+    })
     .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate));
 
   const VENDOR_BY_PREFIX: [RegExp, string][] = [
@@ -104,12 +113,17 @@ export default async function LandingPage() {
   ]);
 
   const providerName = new Map(providers.map((p) => [p.id, p.name]));
+  const providerCategory = new Map(providers.map((p) => [p.id, p.category]));
   const monogram = new Map(providers.map((p) => [p.id, p.monogram]));
   const endpointTotal = providers.reduce((s, p) => s + p.endpoints.length, 0);
   const topProviders = [...facets.providers].slice(0, 8);
 
   // Latest releases (last 15 days, newest first; honest fallback to most-recent additions).
-  const { featured, releaseSummary } = pickReleases(recent, (id) => providerName.get(id) ?? id);
+  const { featured, releaseSummary } = pickReleases(
+    recent,
+    (id) => providerName.get(id) ?? id,
+    (id) => providerCategory.get(id),
+  );
 
   const openTag = (m: Model): string | null =>
     !m.openness.isOpenWeights

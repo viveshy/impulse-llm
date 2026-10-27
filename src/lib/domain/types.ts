@@ -71,13 +71,38 @@ export interface Provider {
   foundedYear?: number;
 }
 
-export interface Pricing {
-  /** USD per 1M input tokens. */
+export interface LongContextPricing {
+  /** Prompts longer than this many tokens bill at the prices below. */
+  thresholdTokens: number;
   inputPerMTok: number;
-  /** USD per 1M output tokens. `null` when N/A (e.g. embeddings). */
+  outputPerMTok?: number;
+  cachedInputPerMTok?: number;
+  batchInputPerMTok?: number;
+  batchOutputPerMTok?: number;
+}
+
+/** All prices are USD per 1M tokens unless the name says otherwise. */
+export interface Pricing {
+  /** 0 means the host lists no price, not that the model is free. */
+  inputPerMTok: number;
+  /** `null` when N/A (e.g. embeddings). */
   outputPerMTok: number | null;
   cachedInputPerMTok?: number;
   batchDiscount?: number;
+  /** Prompt-cache writes: default (5-minute) and 1-hour TTL. */
+  cacheWritePerMTok?: number;
+  cacheWrite1hPerMTok?: number;
+  batchInputPerMTok?: number;
+  batchOutputPerMTok?: number;
+  flexInputPerMTok?: number;
+  flexOutputPerMTok?: number;
+  priorityInputPerMTok?: number;
+  priorityOutputPerMTok?: number;
+  longContext?: LongContextPricing;
+  /** USD per web-search call. */
+  webSearchPerQuery?: number;
+  /** Multiplier for regional (data-residency) processing, e.g. 1.1. */
+  regionalUplift?: number;
 }
 
 export interface ContextSpec {
@@ -135,33 +160,64 @@ export interface Model {
   tags?: string[];
   endpointIds: string[];
   metadata?: Record<string, unknown>;
+  /** What sits between host and model in the LiteLLM key (`eu`, `us-gov-east-1`…). */
+  route?: string;
+  litellmProvider?: string;
+  /** ISO date the host retires this listing. */
+  deprecationDate?: string;
+  /** The host's own pricing page. */
+  sourceUrl?: string;
+  /** Extended feature flags (webSearch, computerUse, pdfInput…). */
+  features?: string[];
+  reasoningEfforts?: string[];
+  /** Verbatim LiteLLM cost-map entry (model detail only). */
+  spec?: Record<string, unknown>;
 }
 
-/* ---------- query + facets (data-source contract) ---------- */
+/* ---------- catalog snapshot, price moves, visitor analytics ---------- */
 
-export type ModelSort =
-  | "popularity"
-  | "priceInputAsc"
-  | "priceInputDesc"
-  | "contextDesc"
-  | "releaseDesc"
-  | "nameAsc";
-
-export interface ModelQuery {
-  search?: string;
-  providerIds?: string[];
-  capabilities?: CapabilityKey[];
-  openOnly?: boolean;
-  includeDeprecated?: boolean;
-  maxInputPrice?: number;
-  minContext?: number;
-  sort?: ModelSort;
+export interface CatalogSnapshot {
+  models: Model[];
+  providers: Provider[];
+  /** The sync's `meta` table: generated_at, models, providers, … (strings). */
+  meta: Record<string, string>;
+  /** When this process fetched it (ms epoch). */
+  loadedAt: number;
 }
 
-export interface Facets {
-  providers: { id: string; name: string; count: number }[];
-  capabilities: { key: CapabilityKey; count: number }[];
-  priceInputRange: [number, number];
-  contextRange: [number, number];
-  total: number;
+export interface PriceChange {
+  listingId: string;
+  name: string;
+  host: { id: string; name: string };
+  route?: string;
+  from: { inputPerMTok: number | null; outputPerMTok: number | null };
+  to: { inputPerMTok: number | null; outputPerMTok: number | null };
+  /** ISO timestamp the sync saw the new price. */
+  at: string;
+}
+
+export interface DailyTraffic {
+  day: string;
+  views: number;
+  visitors: number;
+}
+
+export interface AnalyticsSummary {
+  days: number;
+  generatedAt: string;
+  /** Visitors are distinct per day, so a window's total is the sum of daily visitors. */
+  totals: { views: number; visitors: number };
+  today: { views: number; visitors: number };
+  allTime: { views: number; since: string | null };
+  daily: DailyTraffic[];
+  topPages: { path: string; views: number }[];
+  /** Ranked by visitors, so reloading with a made-up referrer doesn't climb the list. */
+  topReferrers: { host: string; visitors: number }[];
+}
+
+export interface PageHit {
+  path: string;
+  ip: string;
+  ua: string;
+  ref?: string;
 }

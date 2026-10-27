@@ -1,9 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { QueryProvider } from "@/lib/query/provider";
-import { CommandMenuProvider } from "@/components/layout/command-menu-context";
 import { CommandMenu } from "@/components/layout/CommandMenu";
+import { CommandMenuProvider } from "@/components/layout/command-menu-context";
+import { Beacon } from "@/components/site/Beacon";
+import { SiteFooter } from "@/components/site/SiteFooter";
+import { SiteHeader } from "@/components/site/SiteHeader";
+import { getDataSource } from "@/lib/data";
+import { getCatalogIndex } from "@/lib/data/catalog-index";
+import { SITE_URL } from "@/lib/routes";
 
 const spaceGrotesk = localFont({
   src: "./fonts/SpaceGrotesk.woff2",
@@ -13,26 +18,51 @@ const spaceGrotesk = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "Impulse - The reference for every AI model",
+    default: "Impulse · The frontier model desk",
     template: "%s · Impulse",
   },
   description:
-    "Discover, compare and understand every AI model in one place. A fast, keyboard-first reference for AI providers and models.",
+    "Every frontier AI model with its price on every host, new releases, retirements, cheaper alternatives and a cost calculator.",
+  alternates: { types: { "application/rss+xml": [{ url: "/releases/feed.xml", title: "Impulse releases" }] } },
+  openGraph: { siteName: "Impulse", type: "website" },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f6f3" },
+    { media: "(prefers-color-scheme: dark)", color: "#111113" },
+  ],
+};
+
+// Runs before first paint so a saved dark or system theme never flashes light.
+const THEME_SCRIPT = `try{var t=localStorage.getItem("impulse-theme");if(t==="dark"||t==="system")document.documentElement.dataset.theme=t}catch(e){}`;
+
+/** Footer figures; a plain function so the request-time clock stays out of render. */
+async function footerData() {
+  const [summary, index] = await Promise.all([
+    getDataSource().getAnalyticsSummary(30),
+    getCatalogIndex().catch(() => null),
+  ]);
+  return { visits30d: summary?.totals.visitors ?? null, generatedAt: index?.generatedAt, now: Date.now() };
+}
+
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const footer = await footerData();
   return (
-    <html lang="en" className={spaceGrotesk.variable} suppressHydrationWarning>
-      <body>
-        <QueryProvider>
-          <CommandMenuProvider>
-            {children}
-            <CommandMenu />
-          </CommandMenuProvider>
-        </QueryProvider>
+    <html lang="en" data-theme="light" className={spaceGrotesk.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className="flex min-h-screen flex-col">
+        <CommandMenuProvider>
+          <SiteHeader />
+          <main className="flex-1">{children}</main>
+          <SiteFooter {...footer} />
+          <CommandMenu />
+        </CommandMenuProvider>
+        <Beacon />
       </body>
     </html>
   );

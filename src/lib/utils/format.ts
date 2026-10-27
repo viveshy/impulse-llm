@@ -3,14 +3,14 @@
 /** 200000 → "200K", 2_000_000 → "2M", 8191 → "8K". */
 export function formatTokens(n: number): string {
   if (n >= 1_000_000) {
-    const m = n / 1_000_000;
-    return `${Number.isInteger(m) ? m : m.toFixed(1)}M`;
+    // A binary million (1,048,576) reads as "1M", the way labs advertise it.
+    return `${Number((n / 1_000_000).toFixed(1))}M`;
   }
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
   return `${n}`;
 }
 
-/** USD price per 1M tokens. `null` → em dash. */
+/** USD price per 1M tokens. `null` → "-". */
 export function formatPrice(v: number | null | undefined): string {
   if (v === null || v === undefined) return "-";
   return `$${v.toFixed(2)}`;
@@ -62,4 +62,86 @@ export function relativeFromNow(iso: string, now = new Date()): string {
   if (days < 7) return `${days}d ago`;
   if (days < 30) return `${Math.floor(days / 7)}w ago`;
   return formatReleaseDate(iso);
+}
+
+const MONTH_DAY = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return { y, m, d };
+};
+
+/** USD per million tokens: cents at a dollar and above, the digits that matter below it. */
+export function formatUsd(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return "-";
+  if (v >= 1000) return `$${Math.round(v).toLocaleString("en-US")}`;
+  if (v >= 1 || v === 0) return `$${v.toFixed(2)}`;
+  const s = String(Number(v.toPrecision(3)));
+  const decimals = s.includes(".") ? s.split(".")[1].length : 0;
+  return `$${v.toFixed(Math.min(6, Math.max(2, decimals)))}`;
+}
+
+/** A monthly or per-request total. Never prints a non-zero cost as zero. */
+export function formatMoney(v: number): string {
+  if (v === 0) return "$0";
+  if (v < 0.01) return "<$0.01";
+  if (v >= 100) return `$${Math.round(v).toLocaleString("en-US")}`;
+  return `$${v.toFixed(2)}`;
+}
+
+/** "2026-10-26" → "26 Oct 2026". */
+export function formatDate(iso: string): string {
+  const { y, m, d } = MONTH_DAY(iso);
+  if (!y || !m || !d) return iso;
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+}
+
+const dayDiff = (from: string, to: string) =>
+  Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000);
+
+/** How long ago an ISO day was, relative to `today`; older than ~2 months shows the month. */
+export function formatAgo(iso: string, today: string): string {
+  const days = dayDiff(iso, today);
+  if (Number.isNaN(days)) return iso;
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return formatReleaseDate(iso);
+}
+
+/** A countdown in days: "in 12 days", "tomorrow", "3 days ago". */
+export function formatDaysLeft(days: number): string {
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  if (days === -1) return "yesterday";
+  return days > 0 ? `in ${days} days` : `${-days} days ago`;
+}
+
+/** How many times another amount: "2.3×", "13×". */
+export function formatMultiple(r: number): string {
+  return r < 10 ? `${r.toFixed(1)}×` : `${Math.round(r).toLocaleString("en-US")}×`;
+}
+
+/** Axis and tile counts: 950, 1.5K, 12.9K, 2.5M. */
+export function formatCompact(n: number): string {
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) return `${Number((n / 1000).toFixed(1))}K`;
+  return `${Number((n / 1_000_000).toFixed(1))}M`;
+}
+
+/** Shorter than this, a cut-back description says too little; keep the cut-off text instead. */
+const MIN_SENTENCES = 40;
+
+/** A description the source cut off mid-sentence ("... large codebases, code...") ends at its last full sentence instead. */
+export function wholeSentences(text: string): string {
+  const trimmed = text.trimEnd();
+  const cut = /(\.\.\.|…)$/.exec(trimmed);
+  if (!cut) return text;
+  const body = trimmed.slice(0, -cut[0].length).trimEnd();
+  let end = -1;
+  // ".", "!" or "?" before a space ends a sentence; a version number (5.5) or "e.g." does not.
+  for (const m of body.matchAll(/[.!?](?=\s)/g)) {
+    if (/\b(e\.g|i\.e|vs|etc)\.$/i.test(body.slice(Math.max(0, m.index - 4), m.index + 1))) continue;
+    end = m.index + 1;
+  }
+  return end >= MIN_SENTENCES ? body.slice(0, end) : `${body}…`;
 }

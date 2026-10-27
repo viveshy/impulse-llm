@@ -1,219 +1,162 @@
 "use client";
 
-import { ArrowDownUp, Check, LayoutGrid, List, SlidersHorizontal, X } from "lucide-react";
-import { CAPABILITY_LABELS } from "@/lib/domain/capabilities";
-import type { CapabilityKey, Facets, ModelQuery, ModelSort } from "@/lib/domain/types";
-import { SORT_LABELS } from "@/lib/models-query-url";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Loader2, Search, X } from "lucide-react";
+import type { ModelSortKey, TierFilter } from "@/lib/catalog/select";
+import type { ModelKind } from "@/lib/catalog/types";
+import { filterHref, type ModelsQuery } from "@/lib/model-filters";
 import { clsx } from "@/lib/utils/clsx";
-import { Popover } from "@/components/common/Popover";
 
-type View = "list" | "grid";
+const TIERS: { id: TierFilter; label: string }[] = [
+  { id: "frontier", label: "Frontier" },
+  { id: "open", label: "Open weights" },
+  { id: "other", label: "Other labs" },
+  { id: "all", label: "All" },
+];
 
-function toggle<T>(arr: T[] | undefined, value: T): T[] {
-  const set = new Set(arr ?? []);
-  if (set.has(value)) set.delete(value);
-  else set.add(value);
-  return [...set];
-}
+const KINDS: { id: ModelKind | "all"; label: string }[] = [
+  { id: "chat", label: "Chat & reasoning" },
+  { id: "image", label: "Image" },
+  { id: "video", label: "Video" },
+  { id: "speech", label: "Speech" },
+  { id: "transcription", label: "Transcription" },
+  { id: "realtime", label: "Realtime" },
+  { id: "embedding", label: "Embedding" },
+  { id: "rerank", label: "Rerank" },
+  { id: "all", label: "All types" },
+];
 
-function CheckRow({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string;
-  count?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-[10px] rounded-[6px] px-[9px] py-[6px] text-left text-[15px] text-ink-2 transition-colors hover:bg-hover hover:text-ink"
-    >
-      <span
-        className={clsx(
-          "grid h-[15px] w-[15px] flex-none place-items-center rounded-[4px] border",
-          active ? "border-accent bg-accent-dim text-accent" : "border-border-strong text-transparent",
-        )}
-      >
-        <Check size={11} strokeWidth={3} />
-      </span>
-      <span className="flex-1">{label}</span>
-      {count !== undefined && <span className="text-[13px] text-ink-4">{count}</span>}
-    </button>
-  );
-}
+const SORTS: { id: ModelSortKey; label: string }[] = [
+  { id: "newest", label: "Newest" },
+  { id: "price", label: "Cheapest" },
+  { id: "context", label: "Longest context" },
+  { id: "hosts", label: "Most hosts" },
+  { id: "name", label: "Name" },
+];
 
-function Chip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
-  return (
-    <span className="flex h-[27px] items-center gap-[7px] rounded-[6px] border border-border-strong bg-hover pl-[10px] pr-[6px] text-[15px] text-ink">
-      <span className="font-medium">{label}</span>
-      <span className="text-ink-2">{value}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={`Remove ${label} filter`}
-        className="grid h-4 w-4 place-items-center rounded-[3px] text-ink-3 hover:bg-white/[0.06] hover:text-ink"
-      >
-        <X size={12} />
-      </button>
-    </span>
-  );
-}
-
-const triggerBtn =
-  "inline-flex h-[27px] items-center gap-[6px] rounded-[6px] border border-border px-[9px] text-[15px] text-ink-2 transition-colors hover:border-border-strong hover:text-ink";
+const selectClass =
+  "h-9 rounded-[8px] border border-border bg-panel px-2 text-[14px] text-ink-2 hover:border-border-strong focus-visible:outline-2";
 
 export function FilterBar({
-  facets,
   query,
-  onChange,
-  view,
-  onViewChange,
-  count,
+  tier,
+  labs,
 }: {
-  facets: Facets | undefined;
-  query: ModelQuery;
-  onChange: (q: ModelQuery) => void;
-  view: View;
-  onViewChange: (v: View) => void;
-  count: number;
+  query: ModelsQuery;
+  /** The tier in effect (the default depends on whether a lab or search is set). */
+  tier: TierFilter;
+  labs: { slug: string; name: string; count: number }[];
 }) {
-  const providerName = (id: string) => facets?.providers.find((p) => p.id === id)?.name ?? id;
-  const sort: ModelSort = query.sort ?? "popularity";
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [q, setQ] = useState(query.q ?? "");
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const go = (patch: Partial<ModelsQuery>) => start(() => router.replace(filterHref(query, patch), { scroll: false }));
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const onSearch = (value: string) => {
+    setQ(value);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => go({ q: value.trim() || undefined }), 250);
+  };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-[18px] py-[8px]">
-      <Popover
-        width={248}
-        trigger={() => (
-          <span className={triggerBtn}>
-            <SlidersHorizontal size={13} className="text-ink-3" />
-            Filter
-          </span>
-        )}
-      >
-        {() => (
-          <div className="flex flex-col gap-1">
-            <div className="px-[9px] pb-[4px] pt-[6px] text-[12px] uppercase tracking-[0.13em] text-ink-4">
-              Provider
-            </div>
-            {facets?.providers.map((p) => (
-              <CheckRow
-                key={p.id}
-                label={p.name}
-                count={p.count}
-                active={query.providerIds?.includes(p.id) ?? false}
-                onClick={() => onChange({ ...query, providerIds: toggle(query.providerIds, p.id) })}
-              />
-            ))}
-            <div className="px-[9px] pb-[4px] pt-[10px] text-[12px] uppercase tracking-[0.13em] text-ink-4">
-              Capability
-            </div>
-            {facets?.capabilities.map((c) => (
-              <CheckRow
-                key={c.key}
-                label={CAPABILITY_LABELS[c.key]}
-                count={c.count}
-                active={query.capabilities?.includes(c.key) ?? false}
-                onClick={() => onChange({ ...query, capabilities: toggle(query.capabilities, c.key) })}
-              />
-            ))}
-            <div className="mt-1 border-t border-border pt-1">
-              <CheckRow
-                label="Open weights only"
-                active={query.openOnly ?? false}
-                onClick={() => onChange({ ...query, openOnly: !query.openOnly })}
-              />
-            </div>
-          </div>
-        )}
-      </Popover>
-
-      {/* active filter chips */}
-      {query.providerIds?.map((id) => (
-        <Chip
-          key={id}
-          label="Provider"
-          value={providerName(id)}
-          onRemove={() => onChange({ ...query, providerIds: toggle(query.providerIds, id) })}
-        />
-      ))}
-      {query.capabilities?.map((c: CapabilityKey) => (
-        <Chip
-          key={c}
-          label="Capability"
-          value={CAPABILITY_LABELS[c]}
-          onRemove={() => onChange({ ...query, capabilities: toggle(query.capabilities, c) })}
-        />
-      ))}
-      {query.openOnly && (
-        <Chip label="Open weights" value="only" onRemove={() => onChange({ ...query, openOnly: false })} />
-      )}
-
-      <div className="ml-auto flex items-center gap-2">
-        <span className="text-[15px] text-ink-4">{count} models</span>
-
-        <Popover
-          width={190}
-          align="right"
-          trigger={() => (
-            <span className={triggerBtn}>
-              <ArrowDownUp size={13} className="text-ink-3" />
-              {SORT_LABELS[sort]}
-            </span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative flex min-w-0 flex-1 basis-[260px] items-center">
+          <span className="sr-only">Search models</span>
+          <Search size={16} className="pointer-events-none absolute left-3 text-ink-3" />
+          <input
+            value={q}
+            onChange={(e) => onSearch(e.target.value)}
+            placeholder="Search by name or API id"
+            className="h-10 w-full rounded-[10px] border border-border bg-panel pl-9 pr-9 text-[15px] text-ink outline-none placeholder:text-ink-4 hover:border-border-strong focus:border-accent-line"
+          />
+          {pending ? (
+            <Loader2 size={15} className="absolute right-3 animate-spin text-ink-3" />
+          ) : (
+            q && (
+              <button
+                type="button"
+                onClick={() => onSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 grid h-6 w-6 place-items-center rounded-[6px] text-ink-3 hover:bg-hover hover:text-ink"
+              >
+                <X size={14} />
+              </button>
+            )
           )}
+        </label>
+        <select
+          aria-label="Lab"
+          value={query.lab ?? ""}
+          onChange={(e) => go({ lab: e.target.value || undefined })}
+          className={selectClass}
         >
-          {(close) => (
-            <div className="flex flex-col">
-              {(Object.keys(SORT_LABELS) as ModelSort[]).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => {
-                    onChange({ ...query, sort: s });
-                    close();
-                  }}
-                  className={clsx(
-                    "flex items-center gap-2 rounded-[6px] px-[9px] py-[6px] text-left text-[15px] transition-colors hover:bg-hover",
-                    s === sort ? "text-ink" : "text-ink-2",
-                  )}
-                >
-                  <Check size={12} className={clsx(s === sort ? "text-accent" : "text-transparent")} />
-                  {SORT_LABELS[s]}
-                </button>
-              ))}
-            </div>
-          )}
-        </Popover>
-
-        <div className="flex overflow-hidden rounded-[6px] border border-border">
-          <button
-            type="button"
-            aria-label="List view"
-            onClick={() => onViewChange("list")}
-            className={clsx(
-              "grid h-[27px] w-[28px] place-items-center",
-              view === "list" ? "bg-hover text-ink" : "text-ink-3 hover:text-ink-2",
-            )}
-          >
-            <List size={14} />
-          </button>
-          <button
-            type="button"
-            aria-label="Grid view"
-            onClick={() => onViewChange("grid")}
-            className={clsx(
-              "grid h-[27px] w-[28px] place-items-center border-l border-border",
-              view === "grid" ? "bg-hover text-ink" : "text-ink-3 hover:text-ink-2",
-            )}
-          >
-            <LayoutGrid size={14} />
-          </button>
+          <option value="">All labs</option>
+          {labs.map((l) => (
+            <option key={l.slug} value={l.slug}>
+              {l.name} ({l.count})
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Type"
+          value={query.kind ?? "chat"}
+          onChange={(e) => go({ kind: e.target.value as ModelKind | "all" })}
+          className={selectClass}
+        >
+          {KINDS.map((k) => (
+            <option key={k.id} value={k.id}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Sort"
+          value={query.sort ?? "newest"}
+          onChange={(e) => go({ sort: e.target.value as ModelSortKey })}
+          className={selectClass}
+        >
+          {SORTS.map((s) => (
+            <option key={s.id} value={s.id}>
+              Sort: {s.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="radiogroup" aria-label="Tier" className="flex flex-wrap gap-2">
+          {TIERS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={tier === t.id}
+              onClick={() => go({ tier: t.id })}
+              className={clsx(
+                "h-8 rounded-full border px-3 text-[13.5px] transition-colors",
+                tier === t.id
+                  ? "border-ink bg-ink text-bg"
+                  : "border-border bg-panel text-ink-2 hover:border-border-strong hover:text-ink",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+        <label className="ml-auto flex cursor-pointer items-center gap-2 text-[13.5px] text-ink-2">
+          <input
+            type="checkbox"
+            checked={!!query.includeRetired}
+            onChange={(e) => go({ includeRetired: e.target.checked || undefined })}
+            className="h-4 w-4 accent-[var(--accent)]"
+          />
+          Include retired
+        </label>
       </div>
     </div>
   );

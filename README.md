@@ -1,40 +1,56 @@
 # Impulse - web
 
-**The single reference for every AI model.** A fast, keyboard-first explorer for AI
-providers and models - compare price, context, capabilities, benchmarks, and self-host
-requirements across every provider in one place, and find the **open-weight alternative**
-to any model.
+**The frontier model desk.** What OpenAI, Anthropic, Google and xAI ship, what each model
+costs on every host, what is about to be retired, and the cheaper ways to get the same job
+done. Open-weight and other labs are covered too.
 
-![Impulse landing](docs/assets/landing.png)
+![Impulse home](docs/assets/home.png)
 
-Impulse is a developer tool: dense, precise, and quiet. This is the **frontend** - one of
-two repos:
+This is the **frontend** - one of two repos:
 
 | Repo | Role |
 |---|---|
-| [`impulse-api`](https://github.com/viveshy/impulse-api) | Backend - a read-only HTTP API (`app/`) plus the catalog **sync** (`sync/`) that builds its SQLite database from LiteLLM + OpenRouter + Hugging Face + open leaderboards |
+| [`impulse-api`](https://github.com/viveshy/impulse-api) | Backend - a read-only HTTP API (`app/`) plus the catalog **sync** (`sync/`) that builds its SQLite database from LiteLLM, OpenRouter, Hugging Face and open leaderboards |
 | **impulse** (this repo) | Next.js web app that reads the API |
 
 ## Screenshots
 
-| Models explorer | Alternatives |
+| Model page | Compare |
 |---|---|
-| ![Models explorer](docs/assets/models.png) | ![Alternatives](docs/assets/alternatives.png) |
-| **Pricing calculator** | |
-| ![Pricing](docs/assets/pricing.png) | |
+| ![Model page](docs/assets/model.png) | ![Compare](docs/assets/compare.png) |
+| **Cost calculator** | **Retiring models** |
+| ![Cost calculator](docs/assets/calculator.png) | ![Retiring models](docs/assets/retiring.png) |
+| **Watchlist** | **Clouds** |
+| ![Watchlist](docs/assets/watchlist.png) | ![Clouds](docs/assets/clouds.png) |
 
 ## Features
 
-- **Models explorer** - dense, sortable, filterable list/grid with capabilities, pricing,
-  and context at a glance. Filters are URL-synced and shareable.
-- **Model detail** - pricing, context, capability checklist, benchmarks, endpoints, and a
-  two-tier **alternatives** view (open-weight first, then cheaper) scored by capability,
-  context, cost, and benchmark similarity.
-- **Provider pages** - endpoints, regions, auth, SDK install commands, a scoped model list.
-- **Pricing calculator** - enter monthly token volume and rank models by estimated cost.
-- **Compare** - up to four models side by side with a capability matrix.
-- **Capability explorer** and a **⌘K command palette** for keyboard-first navigation.
-- **In-page search** on models, providers, pricing, and the API explorer.
+- **Home** - the newest frontier releases, each lab's current lineup, what is retiring in
+  the next 90 days and the price changes of the last 30.
+- **Model pages** (`/models/<lab>/<model>`) - the headline price with cache, batch and
+  long-context tiers, every host's price against it, capabilities, cheaper alternatives in
+  four groups, the model's line (what replaced it), retirement dates and code to call it.
+- **Models** - a filterable table (tier, lab, kind, search, sort), all in the URL.
+- **Releases** - month by month, with an RSS feed at `/releases/feed.xml`.
+- **Retiring** - every announced retirement in the next 12 months and what to move to,
+  with the successor's price against today's.
+- **Watchlist** (`/watchlist`) - list the models your team runs on the hosts it runs them on
+  and get one page of what to act on: retirements, what to move to, newer models and price
+  moves. No accounts: the list lives in the link, with a calendar feed
+  (`/watchlist/calendar.ics`) and an RSS feed (`/watchlist/feed.xml`) for alerts.
+- **Clouds** (`/clouds`) - which of the frontier labs' current models AWS, Microsoft Azure
+  and Google Cloud sell, at what price against the lab's own API, in which regions, and
+  what each retires next, with a region filter for teams whose data has to stay put.
+- **Compare** - up to four models side by side, including what a month of real traffic
+  costs on each.
+- **Cost calculator** - describe your traffic once (requests, tokens, cache hits, batch)
+  and rank every model by monthly bill, at the lab's price or the cheapest host. The URL
+  keeps the numbers, so a result can be shared.
+- **Labs and hosts** - who makes what, and what each host charges against the lab.
+- **⌘K search** across models, labs, hosts and pages.
+- **Site stats** (`/stats`) - a public visitor counter. No cookies and no stored IP
+  addresses: the API keeps a hash salted with a key that changes daily and is then deleted.
+- Light theme by default, dark on request.
 
 ## Getting started
 
@@ -50,42 +66,44 @@ IMPULSE_API_URL=http://localhost:8080 npm run dev   # http://localhost:3000
 content.
 
 ```bash
-npm run build   # type-check + lint + production build (the API must be reachable)
+npm test        # unit tests (Vitest)
 npm run lint
+npm run build   # production build; the API must be reachable
 ```
 
 ## How data flows
 
-The UI depends only on the `DataSource` interface (`src/lib/data/`). Its single
-implementation, `HttpDataSource`, reads the API. Client components never call it directly -
-they fetch same-origin route handlers (`src/app/api/*`) that run the data source on the
-server, so the backend URL and full-catalog paging stay server-side. Filter/sort/facet
-logic is one shared module (`src/lib/data/query.ts`). Models and providers are addressed by
-an opaque, stable **GUID** - internal identifiers never appear in a URL.
+Pages are server components that read the catalog through the `DataSource` interface
+(`src/lib/data/`), cached in memory for five minutes and refreshed with ISR. The catalog
+layer (`src/lib/catalog/`) folds every host's row for a model into one canonical model with
+a headline price, so a model has one page and every view agrees on what it costs. The
+browser only calls two same-origin routes: `/api/search-index` for ⌘K and `/api/v` for the
+visitor beacon.
 
 ## Project structure
 
 ```
 src/
-  app/            routes - `/` (marketing) and `/app/*` (the tool); `api/*` route handlers
-  components/     layout (TopNav, Topbar, CommandMenu), models, providers, pricing, api, common
+  app/            routes, plus api/ route handlers and redirects for old /app links
+  components/     site chrome, ui primitives, and one folder per page
   lib/
-    domain/       types, Zod schemas, capability catalog (source of truth for shape)
-    data/         DataSource interface + HttpDataSource + shared query logic
-    query/        TanStack Query hooks
+    catalog/      canonical index: grouping, labs, hosts, lineage, prices, alternatives
+    data/         DataSource interface + HttpDataSource
+    domain/       API-facing types and capability labels
 ```
 
 ## Stack
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 (CSS-first `@theme`) ·
-TanStack Query · cmdk · framer-motion · zod. Font: Space Grotesk.
+cmdk · lucide-react · Vitest. Font: Space Grotesk.
 
 See [`AGENTS.md`](./AGENTS.md) for architecture and contribution conventions.
 
 ## Contributing
 
-Issues and PRs welcome. Before submitting, run `npm run lint` and `npm run build` (with the
-API reachable). Keep the design restrained - see the philosophy in `AGENTS.md`.
+Issues and PRs welcome. Before submitting, run `npm test`, `npm run lint` and
+`npm run build` (with the API reachable). Keep the design restrained - see the philosophy in
+`AGENTS.md`.
 
 ## Acknowledgements
 

@@ -2,23 +2,46 @@
 
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { Boxes, CornerDownLeft, LayoutGrid, Search, Server } from "lucide-react";
-import { useModels, useProviders } from "@/lib/query/hooks";
-import { CAPABILITY_LABELS } from "@/lib/domain/capabilities";
-import { CAPABILITY_KEYS } from "@/lib/domain/types";
-import { formatPrice, formatTokens } from "@/lib/utils/format";
+import { useEffect, useMemo, useState } from "react";
+import { Boxes, Building2, CornerDownLeft, FileText, Search, Server } from "lucide-react";
+import type { SearchRow } from "@/lib/catalog/select";
+import { loadSearchIndex, normQuery as norm, rankModels, type SearchIndex } from "@/lib/search";
+import { formatReleaseDate } from "@/lib/utils/format";
 import { useCommandMenu } from "./command-menu-context";
 
+const PAGES = [
+  { href: "/models", label: "All models" },
+  { href: "/releases", label: "Releases" },
+  { href: "/retiring", label: "Retiring soon" },
+  { href: "/compare", label: "Compare models" },
+  { href: "/calculator", label: "Cost calculator" },
+  { href: "/labs", label: "Labs" },
+  { href: "/hosts", label: "Hosts" },
+  { href: "/stats", label: "Site stats" },
+];
+
+const KIND_LABEL: Partial<Record<SearchRow["k"], string>> = {
+  image: "Image",
+  video: "Video",
+  speech: "Speech",
+  transcription: "Transcription",
+  realtime: "Realtime",
+  embedding: "Embedding",
+  rerank: "Rerank",
+  moderation: "Moderation",
+  search: "Search",
+  ocr: "OCR",
+};
+
 const groupClass =
-  "[&_[cmdk-group-heading]]:px-[10px] [&_[cmdk-group-heading]]:pb-[5px] [&_[cmdk-group-heading]]:pt-[9px] [&_[cmdk-group-heading]]:text-[12px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.13em] [&_[cmdk-group-heading]]:text-ink-4";
+  "[&_[cmdk-group-heading]]:px-[10px] [&_[cmdk-group-heading]]:pb-[5px] [&_[cmdk-group-heading]]:pt-[10px] [&_[cmdk-group-heading]]:text-[12.5px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-ink-3";
 
 const itemClass =
-  "flex h-[38px] cursor-pointer items-center gap-[11px] rounded-[6px] px-[10px] text-[15px] text-ink data-[selected=true]:bg-accent-dim";
+  "flex min-h-[40px] cursor-pointer items-center gap-[11px] rounded-[8px] px-[10px] text-[15px] text-ink data-[selected=true]:bg-hover";
 
 function ItemIcon({ children }: { children: React.ReactNode }) {
   return (
-    <span className="grid h-[22px] w-[22px] flex-none place-items-center rounded-[5px] border border-border text-ink-3">
+    <span className="grid h-[24px] w-[24px] flex-none place-items-center rounded-[6px] border border-border bg-sunken text-ink-3">
       {children}
     </span>
   );
@@ -28,157 +51,140 @@ export function CommandMenu() {
   const { open, setOpen } = useCommandMenu();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const { data: models = [] } = useModels({});
-  const { data: providers = [] } = useProviders();
+  const [data, setData] = useState<SearchIndex | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  const providerName = useMemo(
-    () => new Map(providers.map((p) => [p.id, p.name])),
-    [providers],
-  );
+  useEffect(() => {
+    if (!open || data) return;
+    let live = true;
+    loadSearchIndex().then(
+      (d) => live && setData(d),
+      () => live && setFailed(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, data]);
 
-  // We filter ourselves and render only the top hits. Handing cmdk all ~3k models made it
-  // score every item on each keystroke, which froze the menu - so once a search narrows the
-  // pool we can afford to show a lot more than the empty-state browse cap.
-  const needle = q.trim().toLowerCase();
-  const MODEL_BROWSE_CAP = 8;
-  const MODEL_SEARCH_CAP = 30;
-
-  const modelMatches = useMemo(
-    () =>
-      needle
-        ? models.filter((m) =>
-            `${m.name} ${providerName.get(m.providerId) ?? ""} ${m.family ?? ""} ${(m.tags ?? []).join(" ")}`
-              .toLowerCase()
-              .includes(needle),
-          )
-        : models,
-    [models, needle, providerName],
-  );
-  const modelCap = needle ? MODEL_SEARCH_CAP : MODEL_BROWSE_CAP;
-  const modelHits = useMemo(() => modelMatches.slice(0, modelCap), [modelMatches, modelCap]);
-  const modelOverflow = Math.max(0, modelMatches.length - modelHits.length);
-
-  const providerHits = useMemo(() => {
-    const base = needle
-      ? providers.filter((p) => `${p.name} ${p.category}`.toLowerCase().includes(needle))
-      : providers;
-    return base.slice(0, 5);
-  }, [providers, needle]);
-
-  const capabilityHits = useMemo(() => {
-    const base = needle
-      ? CAPABILITY_KEYS.filter((k) => CAPABILITY_LABELS[k].toLowerCase().includes(needle))
-      : CAPABILITY_KEYS;
-    return base.slice(0, 5);
-  }, [needle]);
-
-  const empty = !modelHits.length && !providerHits.length && !capabilityHits.length;
+  const labName = useMemo(() => new Map((data?.labs ?? []).map((l) => [l.s, l.n])), [data]);
+  const models = useMemo(() => (data ? rankModels(data.models, q) : []), [data, q]);
+  const needle = norm(q);
+  const pages = PAGES.filter((p) => !needle || norm(p.label).includes(needle));
+  const labs = needle ? (data?.labs ?? []).filter((l) => norm(l.n).includes(needle)).slice(0, 5) : [];
+  const hosts = needle ? (data?.hosts ?? []).filter((h) => norm(h.n).includes(needle)).slice(0, 5) : [];
 
   if (!open) return null;
 
-  const go = (href: string) => {
+  const close = () => {
     setOpen(false);
+    setQ("");
+  };
+  const go = (href: string) => {
+    close();
     router.push(href);
   };
+  const nothing = data && !models.length && !pages.length && !labs.length && !hosts.length;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal aria-label="Search Impulse">
-      <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal aria-label="Search">
+      <div className="absolute inset-0 bg-[rgba(17,17,19,0.45)] backdrop-blur-[2px]" onClick={close} />
       <Command
-        label="Search Impulse"
+        label="Search"
         shouldFilter={false}
         onKeyDown={(e) => {
-          if (e.key === "Escape") setOpen(false);
+          if (e.key === "Escape") close();
         }}
-        className="absolute left-1/2 top-[14vh] w-[min(560px,92vw)] -translate-x-1/2 overflow-hidden rounded-[10px] border border-border-strong bg-elevated shadow-[0_24px_70px_-20px_rgba(0,0,0,0.75)]"
+        className="absolute left-1/2 top-[12vh] w-[min(600px,calc(100vw-24px))] -translate-x-1/2 overflow-hidden rounded-[14px] border border-border-strong bg-elevated shadow-[0_30px_80px_-24px_rgba(0,0,0,0.45)]"
       >
         <div className="flex items-center gap-[10px] border-b border-border px-[15px] py-[13px]">
-          <Search size={16} className="flex-none text-ink-3" />
+          <Search size={17} className="flex-none text-ink-3" />
           <Command.Input
             autoFocus
             value={q}
             onValueChange={setQ}
-            placeholder="Search models, providers, capabilities…"
-            className="flex-1 bg-transparent text-[17px] tracking-[-0.01em] text-ink outline-none placeholder:text-ink-4"
+            placeholder="Search models, labs, hosts…"
+            className="flex-1 bg-transparent text-[17px] tracking-[-0.01em] text-ink !outline-none placeholder:text-ink-4"
           />
-          <span className="rounded-[4px] border border-border px-[6px] py-px text-[12px] text-ink-4">
-            ESC
-          </span>
+          <kbd className="rounded-[4px] border border-border px-[6px] py-px font-sans text-[12px] text-ink-3">esc</kbd>
         </div>
 
-        <Command.List className="max-h-[52vh] overflow-y-auto p-[6px]">
-          {empty && (
-            <div className="px-[10px] py-6 text-center text-[15px] text-ink-4">
-              No results for “{q}”.
-            </div>
+        <Command.List className="max-h-[56vh] overflow-y-auto p-[6px]">
+          {!data && !failed && <div className="px-[10px] py-6 text-center text-[14.5px] text-ink-3">Loading the catalog…</div>}
+          {failed && (
+            <div className="px-[10px] py-6 text-center text-[14.5px] text-ink-3">Search is unavailable right now.</div>
+          )}
+          {nothing && <div className="px-[10px] py-6 text-center text-[14.5px] text-ink-3">No results for “{q}”.</div>}
+
+          {models.length > 0 && (
+            <Command.Group heading={needle ? "Models" : "Latest frontier models"} className={groupClass}>
+              {models.map((m) => (
+                <Command.Item
+                  key={`${m.l}/${m.s}`}
+                  value={`${m.l}/${m.s}`}
+                  onSelect={() => go(`/models/${m.l}/${m.s}`)}
+                  className={itemClass}
+                >
+                  <ItemIcon>
+                    <Boxes size={13} />
+                  </ItemIcon>
+                  <span className="min-w-0 truncate">{m.n}</span>
+                  {KIND_LABEL[m.k] && <span className="text-[12.5px] text-ink-3">{KIND_LABEL[m.k]}</span>}
+                  <span className="ml-auto whitespace-nowrap text-[13px] text-ink-3">
+                    {labName.get(m.l) ?? m.l}
+                    {m.r ? ` · ${formatReleaseDate(m.r)}` : ""}
+                  </span>
+                </Command.Item>
+              ))}
+            </Command.Group>
           )}
 
-          <Command.Group heading="Models" className={modelHits.length ? groupClass : "hidden"}>
-            {modelHits.map((m) => (
-              <Command.Item
-                key={m.id}
-                value={`${m.name} ${providerName.get(m.providerId) ?? ""} ${m.family ?? ""} ${(m.tags ?? []).join(" ")}`}
-                onSelect={() => go(`/app/models/${m.id}`)}
-                className={itemClass}
-              >
-                <ItemIcon>
-                  <Boxes size={13} />
-                </ItemIcon>
-                <span>{m.name}</span>
-                <span className="ml-auto whitespace-nowrap text-[13px] text-ink-3">
-                  {providerName.get(m.providerId)} · {formatTokens(m.context.contextWindow)} ·{" "}
-                  {formatPrice(m.pricing.inputPerMTok)}
-                </span>
-              </Command.Item>
-            ))}
-            {modelOverflow > 0 && (
-              <div className="px-[10px] py-[6px] text-[13px] text-ink-4">
-                +{modelOverflow} more - keep typing to narrow it down
-              </div>
-            )}
-          </Command.Group>
+          {labs.length > 0 && (
+            <Command.Group heading="Labs" className={groupClass}>
+              {labs.map((l) => (
+                <Command.Item key={l.s} value={`lab:${l.s}`} onSelect={() => go(`/labs/${l.s}`)} className={itemClass}>
+                  <ItemIcon>
+                    <Building2 size={13} />
+                  </ItemIcon>
+                  <span>{l.n}</span>
+                  <span className="ml-auto text-[13px] text-ink-3">{l.c} models</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
 
-          <Command.Group heading="Providers" className={providerHits.length ? groupClass : "hidden"}>
-            {providerHits.map((p) => (
-              <Command.Item
-                key={p.id}
-                value={`${p.name} provider`}
-                onSelect={() => go(`/app/providers/${p.id}`)}
-                className={itemClass}
-              >
-                <ItemIcon>
-                  <Server size={13} />
-                </ItemIcon>
-                <span>{p.name}</span>
-                <span className="ml-auto text-[13px] text-ink-3 capitalize">{p.category}</span>
-              </Command.Item>
-            ))}
-          </Command.Group>
+          {hosts.length > 0 && (
+            <Command.Group heading="Hosts" className={groupClass}>
+              {hosts.map((h) => (
+                <Command.Item key={h.s} value={`host:${h.s}`} onSelect={() => go(`/hosts/${h.s}`)} className={itemClass}>
+                  <ItemIcon>
+                    <Server size={13} />
+                  </ItemIcon>
+                  <span>{h.n}</span>
+                  <span className="ml-auto text-[13px] text-ink-3">{h.c} models</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
 
-          <Command.Group heading="Capabilities" className={capabilityHits.length ? groupClass : "hidden"}>
-            {capabilityHits.map((key) => (
-              <Command.Item
-                key={key}
-                value={`${CAPABILITY_LABELS[key]} capability filter`}
-                onSelect={() => go(`/app/models?caps=${key}`)}
-                className={itemClass}
-              >
-                <ItemIcon>
-                  <LayoutGrid size={13} />
-                </ItemIcon>
-                <span>{CAPABILITY_LABELS[key]}</span>
-                <span className="ml-auto flex items-center gap-1 text-[13px] text-ink-4">
-                  filter <CornerDownLeft size={11} />
-                </span>
-              </Command.Item>
-            ))}
-          </Command.Group>
+          {pages.length > 0 && (
+            <Command.Group heading="Pages" className={groupClass}>
+              {pages.map((p) => (
+                <Command.Item key={p.href} value={`page:${p.href}`} onSelect={() => go(p.href)} className={itemClass}>
+                  <ItemIcon>
+                    <FileText size={13} />
+                  </ItemIcon>
+                  <span>{p.label}</span>
+                  <CornerDownLeft size={12} className="ml-auto text-ink-4" />
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
         </Command.List>
 
-        <div className="flex gap-4 border-t border-border px-[14px] py-[9px] text-[13px] text-ink-4">
-          <span>↑↓ navigate</span>
-          <span>↵ open</span>
-          <span>esc close</span>
+        <div className="hidden gap-4 border-t border-border px-[14px] py-[9px] text-[13px] text-ink-3 sm:flex">
+          <span>↑↓ to move</span>
+          <span>↵ to open</span>
+          <span>esc to close</span>
         </div>
       </Command>
     </div>

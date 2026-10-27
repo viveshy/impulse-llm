@@ -4,25 +4,32 @@
  * bundled-seed fallback.
  *
  * The API is deliberately paginated (anti-scraping); as a trusted server-side
- * consumer we page through it once, cache in memory, and run the SAME in-memory
- * query logic (`./query`) the seed source uses. Models/providers are addressed
- * by their opaque GUID - that GUID becomes the FE `id`.
+ * consumer we load the whole catalog in one internal request and cache it in memory.
+ * Listings and hosts keep their opaque API GUID as the FE `id`; pages address models
+ * by the canonical keys `src/lib/catalog` derives from listing names.
  */
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { CAPABILITY_KEYS } from "@/lib/domain/types";
 import type {
+  AnalyticsSummary,
   Capabilities,
+  CatalogSnapshot,
   DeprecationStatus,
   Endpoint,
-  Facets,
   Modality,
   Model,
-  ModelQuery,
+  PageHit,
+  PriceChange,
   Provider,
 } from "@/lib/domain/types";
 import type { DataSource } from "./data-source";
-import { computeFacets, matchesQuery, type ModelPage, paginateModels, sortModels } from "./query";
 
 const u = <T,>(v: T | null | undefined): T | undefined => v ?? undefined;
+
+/** Prices arrive as per-token floats × 1e6 (0.09999999999999999); 6 decimals is exact enough. */
+const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
+const price = (v: number | null | undefined): number | undefined => (v === null || v === undefined ? undefined : r6(v));
 
 function capabilityRecord(keys: string[]): Capabilities {
   const rec = Object.fromEntries(CAPABILITY_KEYS.map((k) => [k, false])) as Capabilities;
@@ -32,7 +39,7 @@ function capabilityRecord(keys: string[]): Capabilities {
 
 /* ---------- BE DTO → FE domain ---------- */
 
-interface ModelDto {
+export interface ModelDto {
   guid: string;
   name: string;
   family: string | null;
@@ -52,14 +59,45 @@ interface ModelDto {
   capabilities: string[];
   modalities: { input: string[]; output: string[] };
   tags: string[];
-  pricing: { inputPerMtok: number | null; outputPerMtok: number | null; cachedInputPerMtok: number | null };
+  pricing: {
+    inputPerMtok: number | null;
+    outputPerMtok: number | null;
+    cachedInputPerMtok: number | null;
+    cacheWritePerMtok?: number | null;
+    cacheWrite1hPerMtok?: number | null;
+    batchInputPerMtok?: number | null;
+    batchOutputPerMtok?: number | null;
+    flexInputPerMtok?: number | null;
+    flexOutputPerMtok?: number | null;
+    priorityInputPerMtok?: number | null;
+    priorityOutputPerMtok?: number | null;
+    longContext?: {
+      thresholdTokens: number;
+      inputPerMtok: number;
+      outputPerMtok: number | null;
+      cachedInputPerMtok?: number | null;
+      batchInputPerMtok?: number | null;
+      batchOutputPerMtok?: number | null;
+    } | null;
+    webSearchPerQuery?: number | null;
+    regionalUplift?: number | null;
+  };
   performance: { ttftMs: number | null; tokensPerSec: number | null; availabilityPct: number | null };
+  route?: string | null;
+  litellmProvider?: string | null;
+  deprecationDate?: string | null;
+  sourceUrl?: string | null;
+  features?: string[];
+  reasoningEfforts?: string[];
+  rateLimits?: { rpm: number | null; tpm: number | null } | null;
   // detail only:
   benchmarks?: { name: string; score: number; max: number; source?: string | null }[];
   endpoints?: { name: string; method: string; path: string }[];
+  spec?: Record<string, unknown>;
 }
 
-function mapModel(d: ModelDto): Model {
+export function mapModel(d: ModelDto): Model {
+  const p = d.pricing;
   const endpointIds = (d.endpoints ?? []).map((e) => `${d.provider.guid}:${e.path.split("/").pop()}`);
   return {
     id: d.guid,
@@ -71,9 +109,29 @@ function mapModel(d: ModelDto): Model {
     releaseDate: d.releaseDate ?? "",
     deprecation: d.status,
     pricing: {
-      inputPerMTok: d.pricing.inputPerMtok ?? 0,
-      outputPerMTok: d.pricing.outputPerMtok,
-      cachedInputPerMTok: u(d.pricing.cachedInputPerMtok),
+      inputPerMTok: price(p.inputPerMtok) ?? 0,
+      outputPerMTok: price(p.outputPerMtok) ?? null,
+      cachedInputPerMTok: price(p.cachedInputPerMtok),
+      cacheWritePerMTok: price(p.cacheWritePerMtok),
+      cacheWrite1hPerMTok: price(p.cacheWrite1hPerMtok),
+      batchInputPerMTok: price(p.batchInputPerMtok),
+      batchOutputPerMTok: price(p.batchOutputPerMtok),
+      flexInputPerMTok: price(p.flexInputPerMtok),
+      flexOutputPerMTok: price(p.flexOutputPerMtok),
+      priorityInputPerMTok: price(p.priorityInputPerMtok),
+      priorityOutputPerMTok: price(p.priorityOutputPerMtok),
+      longContext: p.longContext
+        ? {
+            thresholdTokens: p.longContext.thresholdTokens,
+            inputPerMTok: r6(p.longContext.inputPerMtok),
+            outputPerMTok: price(p.longContext.outputPerMtok),
+            cachedInputPerMTok: price(p.longContext.cachedInputPerMtok),
+            batchInputPerMTok: price(p.longContext.batchInputPerMtok),
+            batchOutputPerMTok: price(p.longContext.batchOutputPerMtok),
+          }
+        : undefined,
+      webSearchPerQuery: u(p.webSearchPerQuery),
+      regionalUplift: u(p.regionalUplift),
     },
     context: { contextWindow: d.contextWindow ?? 0, maxOutputTokens: d.maxOutputTokens ?? 0 },
     capabilities: capabilityRecord(d.capabilities ?? []),
@@ -97,10 +155,18 @@ function mapModel(d: ModelDto): Model {
     popularity: u(d.popularity),
     tags: d.tags ?? [],
     endpointIds,
+    rateLimits: d.rateLimits ? { rpm: u(d.rateLimits.rpm), tpm: u(d.rateLimits.tpm) } : undefined,
+    route: u(d.route) || undefined,
+    litellmProvider: u(d.litellmProvider),
+    deprecationDate: u(d.deprecationDate) || undefined,
+    sourceUrl: u(d.sourceUrl) || undefined,
+    features: d.features ?? [],
+    reasoningEfforts: d.reasoningEfforts ?? [],
+    spec: d.spec,
   };
 }
 
-interface ProviderDto {
+export interface ProviderDto {
   guid: string;
   name: string;
   website: string;
@@ -115,7 +181,7 @@ interface ProviderDto {
   sdks?: { language: string; packageName: string; installCommand: string; docsUrl: string }[];
 }
 
-function mapProvider(d: ProviderDto): Provider {
+export function mapProvider(d: ProviderDto): Provider {
   const endpoints: Endpoint[] = (d.endpoints ?? []).map((e) => ({
     id: `${d.guid}:${e.path.split("/").pop()}`,
     name: e.name,
@@ -146,10 +212,68 @@ function mapProvider(d: ProviderDto): Provider {
   };
 }
 
+export interface PriceChangeDto {
+  guid: string;
+  name: string;
+  provider: { guid: string; name: string };
+  route: string | null;
+  from: { inputPerMtok: number | null; outputPerMtok: number | null };
+  to: { inputPerMtok: number | null; outputPerMtok: number | null };
+  at: string;
+}
+
+export function mapPriceChange(d: PriceChangeDto): PriceChange {
+  const side = (x: PriceChangeDto["from"]) => ({
+    inputPerMTok: price(x.inputPerMtok) ?? null,
+    outputPerMTok: price(x.outputPerMtok) ?? null,
+  });
+  return {
+    listingId: d.guid,
+    name: d.name,
+    host: { id: d.provider.guid, name: d.provider.name },
+    ...(d.route ? { route: d.route } : {}),
+    from: side(d.from),
+    to: side(d.to),
+    at: d.at,
+  };
+}
+
+/**
+ * GET outside Next's instrumented fetch. The bulk catalog is over the data cache's 2MB
+ * limit, and an uncached `fetch` would make every page that reads it dynamic; this way
+ * pages stay statically generated (ISR) and the in-memory cache below does the reuse.
+ */
+function getJsonDirect<T>(url: string, timeoutMs = 30_000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const send = u.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = send(u, { headers: { accept: "application/json" }, timeout: timeoutMs }, (res) => {
+      if ((res.statusCode ?? 500) >= 400) {
+        res.resume();
+        reject(new Error(`GET ${u.pathname} -> ${res.statusCode}`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("error", reject);
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as T);
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error(`GET ${u.pathname} timed out`)));
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 /* ---------- source ---------- */
 
-const CACHE_TTL_MS = 10 * 60 * 1000;
-type Catalog = { at: number; models: Model[]; providers: Provider[] };
+const CACHE_TTL_MS = 5 * 60 * 1000;
+type Catalog = { at: number; models: Model[]; providers: Provider[]; meta: Record<string, string> };
 
 export class HttpDataSource implements DataSource {
   private cache: Catalog | null = null;
@@ -191,21 +315,23 @@ export class HttpDataSource implements DataSource {
     this.inflight = (async () => {
       try {
         try {
-          const bulk = await this.getJson<{ models: ModelDto[]; providers: ProviderDto[] }>(
-            "/v1/catalog",
-            { cache: "no-store" },
-          );
+          const bulk = await getJsonDirect<{
+            models: ModelDto[];
+            providers: ProviderDto[];
+            meta?: Record<string, string>;
+          }>(`${this.baseUrl}/v1/catalog`);
           this.cache = {
             at: Date.now(),
             models: bulk.models.map(mapModel),
             providers: bulk.providers.map(mapProvider),
+            meta: bulk.meta ?? {},
           };
         } catch {
           const [models, providers] = await Promise.all([
             pageAll<ModelDto>("models", mapModel) as Promise<Model[]>,
             pageAll<ProviderDto>("providers", mapProvider) as Promise<Provider[]>,
           ]);
-          this.cache = { at: Date.now(), models, providers };
+          this.cache = { at: Date.now(), models, providers, meta: {} };
         }
         return this.cache;
       } finally {
@@ -215,16 +341,45 @@ export class HttpDataSource implements DataSource {
     return this.inflight;
   }
 
-  async getProviders(): Promise<Provider[]> {
-    const { providers } = await this.load();
-    return [...providers].sort((a, b) => a.name.localeCompare(b.name));
+  async getCatalog(): Promise<CatalogSnapshot> {
+    const { at, models, providers, meta } = await this.load();
+    return { models, providers, meta, loadedAt: at };
   }
 
-  async getProvider(id: string): Promise<Provider | null> {
+  async getPriceChanges(days: number): Promise<PriceChange[] | null> {
     try {
-      return mapProvider(await this.getJson<ProviderDto>(`/v1/providers/${id}`));
-    } catch {
+      const r = await this.getJson<{ changes: PriceChangeDto[] }>(`/v1/price-changes?days=${days}`);
+      return r.changes.map(mapPriceChange);
+    } catch (e) {
+      console.error("price changes unavailable:", (e as Error).message);
       return null;
+    }
+  }
+
+  async getAnalyticsSummary(days: number, revalidateSeconds = 300): Promise<AnalyticsSummary | null> {
+    try {
+      return await this.getJson<AnalyticsSummary>(`/v1/analytics/summary?days=${days}`, {
+        next: { revalidate: revalidateSeconds },
+      });
+    } catch (e) {
+      console.error("analytics summary unavailable:", (e as Error).message);
+      return null;
+    }
+  }
+
+  async recordHit(hit: PageHit): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/v1/analytics/hit`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(hit),
+        cache: "no-store",
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (!res.ok) return false;
+      return ((await res.json()) as { counted: boolean }).counted;
+    } catch {
+      return false;
     }
   }
 
@@ -234,36 +389,5 @@ export class HttpDataSource implements DataSource {
     } catch {
       return null;
     }
-  }
-
-  async getModelsByProvider(providerId: string): Promise<Model[]> {
-    const { models } = await this.load();
-    return sortModels(
-      models.filter((m) => m.providerId === providerId),
-      "releaseDesc",
-    );
-  }
-
-  async getModels(query: ModelQuery = {}): Promise<Model[]> {
-    const { models, providers } = await this.load();
-    const providerName = (pid: string) => providers.find((p) => p.id === pid)?.name ?? pid;
-    const filtered = models.filter((m) => matchesQuery(m, query, providerName));
-    return sortModels(filtered, query.sort);
-  }
-
-  async getModelsPage(
-    query: ModelQuery = {},
-    cursor: string | null = null,
-    limit = 50,
-  ): Promise<ModelPage> {
-    const { models, providers } = await this.load();
-    const providerName = (pid: string) => providers.find((p) => p.id === pid)?.name ?? pid;
-    const filtered = sortModels(models.filter((m) => matchesQuery(m, query, providerName)), query.sort);
-    return paginateModels(filtered, { cursor, limit });
-  }
-
-  async getFacets(): Promise<Facets> {
-    const { models, providers } = await this.load();
-    return computeFacets(models, providers);
   }
 }

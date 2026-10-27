@@ -1,95 +1,240 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Impulse - design tokens (Tailwind v4 CSS-first theme)
-   Restrained, near-monochrome. Color communicates meaning only.
+   Impulse - design tokens
+   Light by default; dark on request (data-theme="dark") or from the
+   OS when the visitor picked "system". Every text token is at least
+   4.5:1 against every surface it sits on, in both themes.
+   Colour communicates meaning only.
    ============================================================ */
-@theme {
-  --color-bg: #0b0b0c;
-  --color-panel: #0d0d0f;
-  --color-elevated: #161619;
-  --color-hover: #101013;
-
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-2: rgba(255, 255, 255, 0.07);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-
-  --color-ink: #f3f3f4;
-  --color-ink-2: #b7b7be;
-  --color-ink-3: #8c8c95;
-  --color-ink-4: #6a6a73;
-
-  /* accent - selection / focus / link only. never fills or glows. */
-  --color-accent: #8e8cf0;
-  --color-accent-dim: rgba(142, 140, 240, 0.12);
-  --color-accent-line: rgba(142, 140, 240, 0.5);
-
-  /* semantic status only (+ icon/label, never color alone) */
-  --color-ok: #5bb98b;
-  --color-warn: #d9a441;
-  --color-err: #e5686a;
-
-  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, -apple-system, sans-serif;
-
-  --radius-control: 6px;
-  --radius-panel: 10px;
-}
 
 :root {
+  color-scheme: light;
+  --bg: #f6f6f3;
+  --panel: #ffffff;
+  --elevated: #ffffff;
+  --sunken: #efefeb;
+  --hover: #f3f3ef;
+
+  --border: #e2e2dc;
+  --border-2: #ecece7;
+  --border-strong: #cdcdc5;
+
+  --ink: #18181b;
+  --ink-2: #3b3b42;
+  --ink-3: #55555e;
+  --ink-4: #696972;
+
+  /* links, focus, selection, the one primary action */
+  --accent: #4338ca;
+  --accent-dim: rgba(67, 56, 202, 0.08);
+  --accent-line: rgba(67, 56, 202, 0.45);
+  --accent-ink: #ffffff;
+
+  /* status only, always with an icon or a label */
+  --ok: #166534;
+  --warn: #9a4a07;
+  --err: #b42318;
+  --ok-dim: rgba(22, 101, 52, 0.09);
+  --warn-dim: rgba(154, 74, 7, 0.1);
+  --err-dim: rgba(180, 35, 24, 0.08);
+
+  /* chart marks: validated against --panel (dataviz lightness band, >= 3:1) */
+  --chart: #4338ca;
+  --chart-hi: #5b52e0;
+
+  --shadow: 0 1px 2px rgba(24, 24, 27, 0.05), 0 8px 24px -12px rgba(24, 24, 27, 0.12);
+  --scrollbar: rgba(24, 24, 27, 0.2);
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
+  --bg: #111113;
+  --panel: #18181b;
+  --elevated: #202024;
+  --sunken: #0b0b0d;
+  --hover: #1e1e22;
+
+  --border: rgba(255, 255, 255, 0.1);
+  --border-2: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --ink: #f4f4f5;
+  --ink-2: #d4d4d8;
+  --ink-3: #acacb6;
+  --ink-4: #91919c;
+
+  --accent: #a9a6ff;
+  --accent-dim: rgba(169, 166, 255, 0.14);
+  --accent-line: rgba(169, 166, 255, 0.55);
+  --accent-ink: #111113;
+
+  --ok: #5ad08a;
+  --warn: #f2b84b;
+  --err: #ff8a85;
+  --ok-dim: rgba(90, 208, 138, 0.12);
+  --warn-dim: rgba(242, 184, 75, 0.12);
+  --err-dim: rgba(255, 138, 133, 0.12);
+
+  --chart: #8580f0;
+  --chart-hi: #a9a6ff;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+  --scrollbar: rgba(255, 255, 255, 0.18);
 }
 
-html,
-body {
-  height: 100%;
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --bg: #111113;
+    --panel: #18181b;
+    --elevated: #202024;
+    --sunken: #0b0b0d;
+    --hover: #1e1e22;
+
+    --border: rgba(255, 255, 255, 0.1);
+    --border-2: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.18);
+
+    --ink: #f4f4f5;
+    --ink-2: #d4d4d8;
+    --ink-3: #acacb6;
+    --ink-4: #91919c;
+
+    --accent: #a9a6ff;
+    --accent-dim: rgba(169, 166, 255, 0.14);
+    --accent-line: rgba(169, 166, 255, 0.55);
+    --accent-ink: #111113;
+
+    --ok: #5ad08a;
+    --warn: #f2b84b;
+    --err: #ff8a85;
+    --ok-dim: rgba(90, 208, 138, 0.12);
+    --warn-dim: rgba(242, 184, 75, 0.12);
+    --err-dim: rgba(255, 138, 133, 0.12);
+
+    --chart: #8580f0;
+    --chart-hi: #a9a6ff;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+    --scrollbar: rgba(255, 255, 255, 0.18);
+  }
 }
 
-/* Always reserve the scrollbar gutter so content doesn't shift between a scrolling
-   page (landing) and a non-scrolling one (the app shell). */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-elevated: var(--elevated);
+  --color-sunken: var(--sunken);
+  --color-hover: var(--hover);
+  --color-border: var(--border);
+  --color-border-2: var(--border-2);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-line: var(--accent-line);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --color-ok-dim: var(--ok-dim);
+  --color-warn-dim: var(--warn-dim);
+  --color-err-dim: var(--err-dim);
+  --color-chart: var(--chart);
+  --color-chart-hi: var(--chart-hi);
+
+  --font-sans: var(--font-space-grotesk), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --shadow-panel: var(--shadow);
+}
+
 html {
   scrollbar-gutter: stable;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-ink);
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   font-size: 15px;
-  line-height: 1.5;
-  letter-spacing: -0.006em;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: var(--color-accent-dim);
+  background: var(--accent-dim);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent-line);
-  outline-offset: 1px;
-  border-radius: 3px;
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-/* thin, unobtrusive scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
-  background-clip: content-box;
+
+@layer components {
+  /* Data tables share one look. Wrap in .tbl-wrap so wide tables scroll on phones. */
+  .tbl-wrap {
+    overflow-x: auto;
+    /* Contains screen-reader-only text, which is absolutely positioned: in a column scrolled out of view it would
+       otherwise widen the page. */
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--panel);
+  }
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .tbl th {
+    color: var(--ink-3);
+    font-weight: 500;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .tbl td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border-2);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .tbl td.wrap {
+    white-space: normal;
+  }
+  .tbl tbody th {
+    border-bottom-color: var(--border-2);
+  }
+  .tbl tbody tr:last-child > * {
+    border-bottom: 0;
+  }
+  .tbl tbody tr:hover td {
+    background: var(--hover);
+  }
+  .tbl .num {
+    text-align: right;
+    white-space: nowrap;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

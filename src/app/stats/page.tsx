@@ -4,6 +4,7 @@ import { getDataSource } from "@/lib/data";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
 import { canonicalPage } from "@/lib/routes";
 import { formatCompact, formatCount, formatDate } from "@/lib/utils/format";
+import { showVisits, VISITS_SHOWN_ABOVE } from "@/lib/visits";
 import { Container } from "@/components/site/Container";
 import { DailyChart } from "@/components/stats/DailyChart";
 import { StatTile } from "@/components/ui/StatTile";
@@ -68,6 +69,11 @@ export default async function StatsPage() {
 
       {!s ? (
         <p className="mt-8 rounded-[12px] border border-border bg-panel p-4 text-ink-3">Stats are unavailable right now.</p>
+      ) : !showVisits(s.totals.visitors) ? (
+        <p className="mt-8 rounded-[12px] border border-border bg-panel p-4 text-ink-3">
+          Counting{s.allTime.since ? ` since ${formatDate(s.allTime.since)}` : ""}. The numbers show here once more than{" "}
+          {VISITS_SHOWN_ABOVE} people have visited in {s.days} days.
+        </p>
       ) : (
         <div className="mt-8 space-y-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

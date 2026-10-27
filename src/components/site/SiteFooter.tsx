@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatCount } from "@/lib/utils/format";
+import { showVisits } from "@/lib/visits";
 import { Container } from "./Container";
 import { LogoMark } from "./Logo";
 
@@ -90,7 +91,7 @@ export function SiteFooter({
       </Container>
       <div className="border-t border-border-2">
         <Container className="flex flex-wrap items-center justify-between gap-2 py-4 text-[13px] text-ink-3">
-          {visits30d !== null ? (
+          {showVisits(visits30d) ? (
             <Link href="/stats" className="hover:text-ink hover:underline">
               {formatCount(visits30d)} visits in the last 30 days
             </Link>

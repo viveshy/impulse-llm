@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { priceMoves } from "@/lib/catalog/changes";
@@ -6,9 +7,11 @@ import { frontierLineup, releaseRadar, retiring } from "@/lib/catalog/select";
 import { getDataSource } from "@/lib/data";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
 import { compareHref, labHref, modelHref } from "@/lib/routes";
+import { siteJsonLd } from "@/lib/seo";
 import { formatCount, formatReleaseDate, formatTokens } from "@/lib/utils/format";
 import { Container } from "@/components/site/Container";
 import { HeroSearch } from "@/components/home/HeroSearch";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { Lineup } from "@/components/home/Lineup";
 import { PriceMoves } from "@/components/home/PriceMoves";
 import { ReleaseCard } from "@/components/home/ReleaseCard";
@@ -18,6 +21,8 @@ import { Section } from "@/components/ui/Section";
 import { StatTile } from "@/components/ui/StatTile";
 
 export const revalidate = 300;
+
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export default async function HomePage() {
   const [index, changes] = await Promise.all([getCatalogIndex(), getDataSource().getPriceChanges(30)]);
@@ -38,6 +43,7 @@ export default async function HomePage() {
 
   return (
     <>
+      <JsonLd data={siteJsonLd()} />
       <div className="border-b border-border bg-panel">
         <Container className="grid gap-10 py-12 md:py-16 lg:grid-cols-[1.35fr_1fr] lg:items-center">
           <div>

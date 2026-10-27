@@ -15,6 +15,7 @@ import { ParamChips } from "@/components/ui/TierTabs";
 export const metadata: Metadata = {
   title: "Releases",
   description: "Every new AI model from the frontier labs, month by month, with launch prices and context windows.",
+  alternates: { canonical: "/releases" },
 };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

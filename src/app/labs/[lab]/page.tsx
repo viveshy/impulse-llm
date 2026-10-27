@@ -4,9 +4,11 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { labPage } from "@/lib/catalog/directory";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
-import { compareHref, hostHref } from "@/lib/routes";
+import { compareHref, hostHref, labHref } from "@/lib/routes";
+import { pageJsonLd } from "@/lib/seo";
 import { RetiringList } from "@/components/home/RetiringList";
 import { ModelTable } from "@/components/models/ModelTable";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { Container } from "@/components/site/Container";
 import { Badge } from "@/components/ui/Badge";
 import { LabMark } from "@/components/ui/BrandMark";
@@ -40,6 +42,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const s = page.summary;
   return {
     title: `${s.name} models and prices`,
+    alternates: { canonical: labHref(s.slug) },
     description: `Every ${s.name} model: the current lineup with prices, what is being retired, and the ${s.hostCount} hosts that serve them.`,
   };
 }
@@ -51,6 +54,7 @@ export default async function LabPage({ params }: { params: Params }) {
 
   return (
     <Container className="py-8">
+      <JsonLd data={pageJsonLd(`${s.name} models and prices`, [["Labs", "/labs"], [s.name, labHref(s.slug)]])} />
       <nav aria-label="Breadcrumb" className="text-[13.5px] text-ink-3">
         <Link href="/labs" className="hover:text-ink">
           Labs

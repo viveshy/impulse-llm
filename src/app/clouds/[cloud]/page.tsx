@@ -46,6 +46,7 @@ export async function generateMetadata({ params, searchParams }: { params: Param
   const c = page.cloud;
   return {
     title: `Frontier AI models on ${c.name}`,
+    alternates: { canonical: cloudHref(c.id) },
     description: `Which frontier models ${c.name} sells through ${page.services.map((s) => s.host.name).join(" and ")}, at what price against the labs' own APIs, in which regions, and what it retires next.`,
   };
 }

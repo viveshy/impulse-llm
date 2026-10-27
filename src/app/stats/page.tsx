@@ -14,6 +14,7 @@ export const revalidate = 60;
 export const metadata: Metadata = {
   title: "Site stats",
   description: "How many people use impulse, counted without cookies and without storing IP addresses.",
+  alternates: { canonical: "/stats" },
 };
 
 const tile = (n: number) => (n < 10_000 ? formatCount(n) : formatCompact(n));

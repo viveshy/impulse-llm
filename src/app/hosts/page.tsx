@@ -12,6 +12,7 @@ export const revalidate = 300;
 export const metadata: Metadata = {
   title: "Where to run AI models",
   description: "Every API that serves the models in the catalog: labs' own APIs, clouds, inference providers, gateways and subscription plans.",
+  alternates: { canonical: "/hosts" },
 };
 
 const KINDS: { kind: HostKind; title: string; blurb: string }[] = [

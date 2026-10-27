@@ -9,6 +9,7 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 import { getDataSource } from "@/lib/data";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
 import { SITE_URL } from "@/lib/routes";
+import { SITE_DESCRIPTION } from "@/lib/seo";
 
 const spaceGrotesk = localFont({
   src: "./fonts/SpaceGrotesk.woff2",
@@ -20,13 +21,13 @@ const spaceGrotesk = localFont({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Impulse · The frontier model desk",
+    default: "Impulse · AI model prices, releases and retirements",
     template: "%s · Impulse",
   },
-  description:
-    "Every frontier AI model with its price on every host, new releases, retirements, cheaper alternatives and a cost calculator.",
+  description: SITE_DESCRIPTION,
   alternates: { types: { "application/rss+xml": [{ url: "/releases/feed.xml", title: "Impulse releases" }] } },
   openGraph: { siteName: "Impulse", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {

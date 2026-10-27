@@ -17,8 +17,10 @@ import type { CanonicalModel, CatalogIndex } from "@/lib/catalog/types";
 import { getDataSource } from "@/lib/data";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
 import { compareHref, labHref, modelHref, resolveModelRoute, watchAddHref } from "@/lib/routes";
+import { modelAnswers, modelJsonLd } from "@/lib/seo";
 import { formatAgo, formatDate, formatDaysLeft, formatTokens, formatUsd } from "@/lib/utils/format";
 import { Alternatives } from "@/components/detail/Alternatives";
+import { Answers } from "@/components/detail/Answers";
 import { Benchmarks } from "@/components/detail/Benchmarks";
 import { Capabilities } from "@/components/detail/Capabilities";
 import { Lineage } from "@/components/detail/Lineage";
@@ -27,6 +29,7 @@ import { Quickstart } from "@/components/detail/Quickstart";
 import { Sources } from "@/components/detail/Sources";
 import { WhereToRun } from "@/components/detail/WhereToRun";
 import { KIND_LABEL } from "@/components/models/bits";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { Container } from "@/components/site/Container";
 import { Badge } from "@/components/ui/Badge";
 import { CopyId } from "@/components/ui/CopyButton";
@@ -104,9 +107,11 @@ export default async function ModelPage({ params }: { params: Params }) {
   const staying = m.hostCount - dropped.size;
   const benchmarks = detail?.benchmarks ?? [];
   const self = `${m.labSlug}/${m.slug}`;
+  const answers = modelAnswers(m, index);
 
   return (
     <Container className="py-8">
+      <JsonLd data={modelJsonLd(m, answers, index.generatedAt)} />
       <nav aria-label="Breadcrumb" className="text-[13.5px] text-ink-3">
         <Link href="/models" className="hover:text-ink">
           Models
@@ -256,6 +261,12 @@ export default async function ModelPage({ params }: { params: Params }) {
         <Section id="quickstart" title="Call it" description={`Using ${ref.host.name}'s API.`}>
           <Quickstart snippets={quickstartSnippets(m)} />
         </Section>
+
+        {answers.length > 0 && (
+          <Section id="answers" title="Quick answers">
+            <Answers items={answers} />
+          </Section>
+        )}
 
         <Section id="sources" title="Sources">
           <Sources model={m} spec={detail?.spec} />

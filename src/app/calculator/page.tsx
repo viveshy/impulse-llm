@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: "AI model cost calculator",
   description:
     "What a month of your traffic costs on every frontier model, with prompt caching and batch discounts, at the lab's API or the cheapest host.",
+  alternates: { canonical: "/calculator" },
 };
 
 export default async function CalculatorPage({

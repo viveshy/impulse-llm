@@ -17,6 +17,7 @@ export const metadata: Metadata = {
   title: "Frontier AI models on AWS, Azure and Google Cloud",
   description:
     "Which of the frontier labs' current models AWS, Microsoft Azure and Google Cloud sell, at what price against the lab's own API, in which regions, and what they retire next.",
+  alternates: { canonical: "/clouds" },
 };
 
 const labName = (id: string) => labById(id)?.name ?? id;

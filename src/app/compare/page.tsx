@@ -20,6 +20,7 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   return {
     title: models.length > 1 ? models.map((m) => m.name).join(" vs ") : "Compare models",
     description: "Prices, monthly cost, limits and capabilities of AI models side by side.",
+    alternates: { canonical: models.length > 1 ? compareHref(models) : "/compare" },
   };
 }
 

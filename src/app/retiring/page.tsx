@@ -17,6 +17,7 @@ export const metadata: Metadata = {
   title: "Retiring models",
   description:
     "Which AI models the labs and clouds are retiring, when, where, and which newer model to move to.",
+  alternates: { canonical: "/retiring" },
 };
 
 const TIERS: { id: TierFilter; label: string }[] = [

@@ -6,8 +6,10 @@ import { HOST_KIND_LABEL } from "@/lib/catalog/hosts";
 import { labById } from "@/lib/catalog/labs";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
 import { hostHref, labHref, modelHref } from "@/lib/routes";
+import { pageJsonLd } from "@/lib/seo";
 import { formatCount, formatReleaseDate, formatTokens } from "@/lib/utils/format";
 import { KIND_LABEL } from "@/components/models/bits";
+import { JsonLd } from "@/components/seo/JsonLd";
 import { Container } from "@/components/site/Container";
 import { Badge } from "@/components/ui/Badge";
 import { HostMark } from "@/components/ui/BrandMark";
@@ -37,6 +39,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!page) return { title: "Host not found" };
   return {
     title: `${page.host.name}: models and prices`,
+    alternates: { canonical: hostHref(page.host.slug) },
     description: `The ${page.host.modelCount} models ${page.host.name} serves, with its price for each against the lab's own.`,
   };
 }
@@ -78,6 +81,9 @@ export default async function HostPage({ params, searchParams }: { params: Param
 
   return (
     <Container className="py-8">
+      <JsonLd
+        data={pageJsonLd(`${page.host.name}: models and prices`, [["Hosts", "/hosts"], [page.host.name, hostHref(page.host.slug)]])}
+      />
       <nav aria-label="Breadcrumb" className="text-[13.5px] text-ink-3">
         <Link href="/hosts" className="hover:text-ink">
           Hosts

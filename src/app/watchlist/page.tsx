@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: "Watchlist",
   description:
     "Track the AI models your team runs: when each host retires them, what to move to, and price changes, with calendar and RSS alerts.",
+  alternates: { canonical: "/watchlist" },
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;

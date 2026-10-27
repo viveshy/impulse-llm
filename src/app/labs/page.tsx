@@ -13,6 +13,7 @@ export const revalidate = 300;
 export const metadata: Metadata = {
   title: "AI labs",
   description: "The labs behind every model in the catalog: their newest releases, how many models they ship and where you can run them.",
+  alternates: { canonical: "/labs" },
 };
 
 const markId = (l: LabSummary) => (l.slug === "other" ? null : l.slug);

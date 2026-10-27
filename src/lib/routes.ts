@@ -54,7 +54,7 @@ const STATIC_PAGES = new Set([
 const labSlugs = new WeakMap<CatalogIndex, Set<string>>();
 
 /** Labs with a page: those with at least one model that isn't only a `-latest` alias. */
-function labsOf(index: CatalogIndex): Set<string> {
+export function labsOf(index: CatalogIndex): Set<string> {
   let set = labSlugs.get(index);
   if (!set) {
     set = new Set(index.models.filter((m) => !m.aliasOnly).map((m) => m.labSlug));

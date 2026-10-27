@@ -12,6 +12,7 @@ import { ModelTable } from "@/components/models/ModelTable";
 export const metadata: Metadata = {
   title: "Models",
   description: "Every frontier AI model with its price, context window, capabilities and hosts. Filter by lab, type and tier.",
+  alternates: { canonical: "/models" },
 };
 
 const PAGE_SIZE = 100;

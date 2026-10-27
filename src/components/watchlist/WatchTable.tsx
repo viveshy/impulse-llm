@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { AlertTriangle, CalendarClock, X } from "lucide-react";
 import { qualifiers } from "@/lib/catalog/detail";
-import { retirementScope } from "@/lib/catalog/select";
-import type { WatchRow } from "@/lib/catalog/watch";
+import { retirementScope, type HostRetirement } from "@/lib/catalog/select";
+import { isMoving, type WatchRow } from "@/lib/catalog/watch";
 import { hostHref, modelHref } from "@/lib/routes";
 import { formatDate, formatDaysLeft } from "@/lib/utils/format";
 import { watchKey, type WatchItem } from "@/lib/watchlist";
@@ -21,23 +21,43 @@ function Notice({ row }: { row: WatchRow }) {
   );
 }
 
+/** The host's retirements, earliest first, each with the part it takes when that isn't all of it. */
+function Dates({ retirements }: { retirements: HostRetirement[] }) {
+  return (
+    <ul className="space-y-[2px] text-[13px] text-ink-2">
+      {retirements.map((r) => (
+        <li key={r.date}>
+          {formatDate(r.date)}
+          {retirementScope(r) && <span className="text-ink-3"> · {retirementScope(r)}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Status({ row, items }: { row: WatchRow; items: WatchItem[] }) {
   const gone = <AlertTriangle size={12} aria-hidden />;
   switch (row.state) {
     case "model-gone":
       return (
         <div className="space-y-1">
-          <Badge tone="err" icon={gone}>No longer listed</Badge>
-          <div className="text-[13px] text-ink-3">No host lists this model any more.</div>
+          <Badge tone="err" icon={gone}>Not listed</Badge>
+          <div className="text-[13px] text-ink-3">No host in the catalog lists this model.</div>
         </div>
       );
-    case "host-gone":
+    case "host-gone": {
+      const n = row.otherHosts ?? 0;
       return (
         <div className="space-y-1">
-          <Badge tone="err" icon={gone}>Not on {row.hostName}</Badge>
-          <div className="text-[13px] text-ink-3">{row.hostName} no longer lists it; other hosts still do.</div>
+          <Badge tone="err" icon={gone}>{row.hostKnown ? `Not on ${row.hostName}` : "Host not found"}</Badge>
+          <div className="text-[13px] text-ink-3">
+            {row.hostKnown
+              ? `${row.hostName} doesn't list it${n ? `; ${n} other ${n === 1 ? "host does" : "hosts do"}.` : ", and no other host serves it now."}`
+              : `No host in the catalog goes by “${row.hostSlug}”.`}
+          </div>
         </div>
       );
+    }
     case "pin-gone": {
       const unpinned = items.map((i) => (watchKey(i) === row.key ? { model: i.model, host: i.host } : i));
       return (
@@ -56,24 +76,29 @@ function Status({ row, items }: { row: WatchRow; items: WatchItem[] }) {
       return (
         <div className="space-y-1">
           <Badge tone="err" icon={gone}>Retired</Badge>
-          {row.retiredOn && <div className="text-[13px] text-ink-2">{formatDate(row.retiredOn)}</div>}
+          {row.retiredOn && (
+            <div className="text-[13px] text-ink-2">
+              {formatDate(row.retiredOn)}
+              {row.except && <span className="text-ink-3"> · all but {row.except.join(", ")}</span>}
+            </div>
+          )}
+          {/* What the host still serves may have its own date. */}
+          {row.retirements.length > 0 && <Dates retirements={row.retirements} />}
           <Notice row={row} />
         </div>
       );
     case "retiring":
       return (
         <div className="space-y-1">
-          <Badge tone={urgency(row.daysLeft!)} icon={<CalendarClock size={12} aria-hidden />}>
-            Retires {formatDaysLeft(row.daysLeft!)}
+          {/* Only a version, variant or region retiring isn't urgent: the model itself stays. */}
+          <Badge
+            tone={row.partly ? undefined : urgency(row.daysLeft!)}
+            icon={<CalendarClock size={12} aria-hidden />}
+            title={row.partly ? "Only part of what the host offers retires; the rest stays." : undefined}
+          >
+            {row.partly ? "Partly retires" : "Retires"} {formatDaysLeft(row.daysLeft!)}
           </Badge>
-          <ul className="space-y-[2px] text-[13px] text-ink-2">
-            {row.retirements.map((r) => (
-              <li key={r.date}>
-                {formatDate(r.date)}
-                {retirementScope(r) && <span className="text-ink-3"> · {retirementScope(r)}</span>}
-              </li>
-            ))}
-          </ul>
+          <Dates retirements={row.retirements} />
           <Notice row={row} />
         </div>
       );
@@ -96,7 +121,7 @@ function Status({ row, items }: { row: WatchRow; items: WatchItem[] }) {
 /** `stacked`: under the model's name on small screens, where a missing value is left out rather than dashed. */
 function Next({ row, stacked = false }: { row: WatchRow; stacked?: boolean }) {
   const s = row.successor;
-  const moving = row.state !== "ok" && row.state !== "not-before";
+  const moving = isMoving(row);
   if (!s) {
     if (moving && row.model) {
       return (
@@ -116,21 +141,26 @@ function Next({ row, stacked = false }: { row: WatchRow; stacked?: boolean }) {
       <Link href={modelHref(s.model)} className="font-medium text-ink hover:text-accent hover:underline">
         {s.model.name}
       </Link>
-      <div className="text-[13px] text-ink-3">
-        {s.listing ? (
-          <>
-            on {row.hostName}
-            {s.delta !== null && (
-              <>
-                {" · "}
-                <Delta ratio={s.delta} /> price
-              </>
-            )}
-          </>
-        ) : (
-          `not on ${row.hostName} yet`
-        )}
-      </div>
+      {/* A host the catalog doesn't know: nothing to say about what it serves. */}
+      {row.hostKnown && (
+        <div className="text-[13px] text-ink-3">
+          {s.listing ? (
+            <>
+              on {row.hostName}
+              {s.delta !== null && (
+                <>
+                  {" · "}
+                  <Delta ratio={s.delta} /> price
+                </>
+              )}
+            </>
+          ) : s.retiredHere ? (
+            `retired on ${row.hostName}`
+          ) : (
+            `not on ${row.hostName} yet`
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -175,9 +205,13 @@ function What({ row }: { row: WatchRow }) {
         <HostMark slug={row.hostSlug} name={row.hostName} size={18} />
         <span>
           on{" "}
-          <Link href={hostHref(row.hostSlug)} className="text-ink-2 hover:text-ink hover:underline">
-            {row.hostName}
-          </Link>
+          {row.hostKnown ? (
+            <Link href={hostHref(row.hostSlug)} className="text-ink-2 hover:text-ink hover:underline">
+              {row.hostName}
+            </Link>
+          ) : (
+            <span className="text-ink-2">{row.hostName}</span>
+          )}
         </span>
       </div>
       {l && (

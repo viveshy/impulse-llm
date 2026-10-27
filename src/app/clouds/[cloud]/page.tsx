@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { cloudPage } from "@/lib/catalog/clouds";
+import { cloudPage, retiresBy } from "@/lib/catalog/clouds";
 import { labById } from "@/lib/catalog/labs";
-import { daysBetween } from "@/lib/catalog/select";
+import { addDays } from "@/lib/catalog/select";
 import { ZONES } from "@/lib/clouds";
 import { getCatalogIndex } from "@/lib/data/catalog-index";
 import { cloudHref, hostHref } from "@/lib/routes";
@@ -24,17 +25,23 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 /** Past this many, the other models fold away behind a toggle. */
 const OTHER_OPEN = 12;
 
-async function load(params: Params, zone?: string) {
-  const [{ cloud }, index] = await Promise.all([params, getCatalogIndex()]);
+/** Once per request: the metadata and the page both ask for it. */
+const build = cache(async (cloud: string, zone?: string) => {
+  const index = await getCatalogIndex();
   let id = cloud;
   try {
     id = decodeURIComponent(cloud);
   } catch {}
   return { index, page: cloudPage(index, id.toLowerCase(), zone) };
+});
+
+async function load(params: Params, searchParams: SearchParams) {
+  const [{ cloud }, sp] = await Promise.all([params, searchParams]);
+  return build(cloud, typeof sp.zone === "string" ? sp.zone : undefined);
 }
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const { page } = await load(params);
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: SearchParams }): Promise<Metadata> {
+  const { page } = await load(params, searchParams);
   if (!page) return { title: "Cloud not found" };
   const c = page.cloud;
   return {
@@ -44,15 +51,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 export default async function CloudPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
-  const sp = await searchParams;
-  const { index, page } = await load(params, typeof sp.zone === "string" ? sp.zone : undefined);
+  const { index, page } = await load(params, searchParams);
   if (!page) notFound();
   const { cloud, services, zones, zone, lineup, missing, other } = page;
   const today = index.today;
   const several = services.length > 1;
   const z = ZONES.find((x) => x.id === zone);
   const labs = [...new Set(lineup.map((o) => o.model.labId))].map((id) => labById(id)?.name ?? id);
-  const retiring = [...lineup, ...other].filter((o) => o.retires && daysBetween(today, o.retires.date) <= 365).length;
+  const retiring = [...lineup, ...other].filter((o) => retiresBy(o, addDays(today, 365))).length;
   const noRegions = services.filter((s) => !s.regions).map((s) => s.host.name);
   // "in Europe", or for global endpoints, which aren't a place: "on global endpoints".
   const where = !z ? "" : z.id === "global" ? ` on ${z.where}` : ` in ${z.where}`;

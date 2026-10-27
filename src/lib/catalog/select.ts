@@ -128,6 +128,14 @@ export function hostRetirements(m: CanonicalModel, opts: { apiOnly?: boolean } =
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.host.localeCompare(b.host));
 }
 
+/**
+ * The retirement that heads a host's upcoming ones: the first that takes all of it, or all of it bar some regions;
+ * failing that, the first of only a part. A version or variant going sooner doesn't decide when the model goes.
+ */
+export function headlineRetirement(upcoming: HostRetirement[]): HostRetirement | undefined {
+  return upcoming.find((r) => !r.only) ?? upcoming[0];
+}
+
 /** "2024-08-06, 2024-11-20 only", "all but US government regions", or null when all of it goes. */
 export function retirementScope(r: HostRetirement): string | null {
   if (r.only) return r.only.length ? `${r.only.join(", ")} only` : "some versions only";

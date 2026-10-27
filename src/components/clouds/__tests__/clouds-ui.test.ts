@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { cloudIndex as index, zonedIndex } from "@/lib/catalog/__tests__/cloud-fixture";
+import { cloudIndex as index, staggeredIndex, zonedIndex } from "@/lib/catalog/__tests__/cloud-fixture";
 import { cloudOverview, cloudPage } from "@/lib/catalog/clouds";
 import { CloudMatrix } from "@/components/clouds/CloudMatrix";
 import { CloudOffersTable } from "@/components/clouds/CloudOffersTable";
@@ -20,6 +20,12 @@ describe("CloudMatrix", () => {
     expect(gpt7).toContain('<span class="sr-only">On Microsoft Azure:</span>');
     expect(gpt7).toContain("lab price");
   });
+
+  it("groups each lab's models under the lab's heading, for screen readers too", () => {
+    expect(html.match(/<tbody>/g)).toHaveLength(3);
+    expect(html.match(/scope="rowgroup"/g)).toHaveLength(3);
+    expect(html).not.toContain('scope="colgroup"');
+  });
 });
 
 describe("CloudOffersTable", () => {
@@ -27,7 +33,15 @@ describe("CloudOffersTable", () => {
     const aws = cloudPage(index, "aws")!;
     const html = render(createElement(CloudOffersTable, { offers: aws.lineup, today: index.today, services: false, regions: true }));
     expect(html).toContain("1 Mar 2027 · us only");
+    expect(html).toContain("Partly retires in 126 days");
     expect(html).toContain("US, Europe, Global");
+  });
+
+  it("dates the retirement of all of it, and a part that goes sooner under it", () => {
+    const aws = cloudPage(staggeredIndex, "aws")!;
+    const html = render(createElement(CloudOffersTable, { offers: aws.lineup, today: staggeredIndex.today, services: false, regions: true }));
+    expect(html).toContain("Retires in 164 days");
+    expect(html).toContain("First: 1 Dec 2026 · us only");
   });
 
   it("names the service each model is sold through when the cloud has more than one", () => {

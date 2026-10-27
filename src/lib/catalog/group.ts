@@ -30,7 +30,7 @@ const KIND_BY_MODE: Record<string, ModelKind> = {
 };
 
 const SPECIAL =
-  /(^|-)(search|audio|realtime|tts|transcribe|image|embedding|moderation|deep-research|computer-use|cyber|live|robotics|translate|voice|imagine|customtools|safeguard|guard|ocr|think|exp|experimental)(-|$)/;
+  /(^|-)(search|audio|realtime|tts|transcribe|image|embedding|moderation|deep-research|computer-use|cyber|live|robotics|translate|voice|imagine|customtools|safeguard|guard|ocr|think|exp|experimental|lyria|music)(-|$)/;
 const PREVIEW = /(^|-)(preview|beta|exp|experimental)(-|$)/;
 /** "Bedrock chat model." — the sync's filler when no real description exists. */
 const FILLER = /^[\w .()/-]{0,60} model\.$/;

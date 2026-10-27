@@ -49,7 +49,7 @@ export default async function WatchlistPage({ searchParams }: { searchParams: Se
           <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatTile label="Act now" value={s.act} sub={`gone, retired or retiring within ${ACT_WITHIN_DAYS} days`} />
             <StatTile label="Retiring later" value={s.later} sub={`more than ${ACT_WITHIN_DAYS} days out`} />
-            <StatTile label="Newer model out" value={s.newer} sub="nothing retiring yet" />
+            <StatTile label="Newer model out" value={s.newer} sub="nothing to move off yet" />
             <StatTile label="Price moves" value={pricesKnown ? s.moved : "-"} sub="in the last 30 days" />
           </div>
           <div className="mt-6">

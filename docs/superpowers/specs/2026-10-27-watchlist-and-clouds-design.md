@@ -23,18 +23,33 @@ feed. No accounts: the list lives in the link.
   malformed entries are dropped, duplicates collapse.
 - **Each row shows**: the model, host and API id; its status; what to move to; its price on that
   host and any move in the last 30 days.
-  - Status, most urgent first: no longer listed anywhere / no longer on this host / the pinned
-    version is gone / retired / retires on a date (with a countdown) / no retirement before a date
-    ("not sooner than") / no date announced.
+  - Status, most urgent first: not listed by any host / not on this host / the pinned version is
+    gone / retired / retires on a date (with a countdown) / only part of it retires ("Partly
+    retires") / no retirement before a date ("not sooner than") / no date announced.
   - Unpinned rows show every retirement this host has scheduled for the model, labelled the way
     /retiring labels them ("2025-09-29 only", "except US government regions"). Pinned rows show only
     that listing's date.
+  - The countdown, "Act now" and "Move to" follow the host's retirement of all of the model, or all
+    of it bar some regions, not a version, variant or region that goes sooner. When only a part is
+    scheduled to go, the row says "Partly retires", isn't counted in "Act now" and offers the newer
+    model rather than a move.
+  - Once the host has retired all of it bar some regions or versions, the row is retired and says
+    which still stand ("all but US government regions").
+  - Nothing is stored, so "not on this host" can't tell a host that dropped the model from one that
+    never had it; the row says the host doesn't list it and how many other hosts serve it now. A host
+    the catalog doesn't know gets no link.
+  - The retirement notice linked is the page the date was checked on, else the host's page for that
+    lab's models: Vertex dates Claude on Claude's pages, not on Gemini's.
   - Move to: the live successor that no API drops within 90 days of the retirement (the /retiring
-    rule), and whether the same host serves it, at what price against today's.
+    rule), and whether the same host still serves it (a listing it has retired doesn't count), at
+    what price against today's.
   - A newer model in the line is shown even when nothing is retiring.
 - **Feeds** (same `w` parameter):
-  - `/watchlist/calendar.ics`: one all-day event per scheduled retirement, with alarms 30 and 7
-    days before. UIDs are stable so calendar apps update events instead of duplicating them.
+  - `/watchlist/calendar.ics`: one all-day event per scheduled retirement, and per retirement of the
+    last 90 days, so an event stays on its day and after. Alarms 30 and 7 days before, though Google
+    Calendar ignores them and Apple Calendar drops them from subscriptions unless told to keep alerts;
+    the page says so. A UID names the row and the part that retires, not the date, so a postponed
+    retirement moves the event instead of adding a second one.
   - `/watchlist/feed.xml`: RSS items for retirements as they come within 90, 30 and 7 days (one item
     per stage, dated the day the stage starts), price changes on the watched listings (dated by the
     change), and a newer model in the line (dated by its release). No new storage is needed.
@@ -55,7 +70,8 @@ For teams that can only buy through their cloud.
     4.6 and 4.3 and still has GPT-5, which Oracle no longer lists; Snowflake has only older Claude
     models. Covering them would show them without models they sell, so /clouds names them and links
     their own lists instead. Bedrock, Azure and Vertex matched their docs for the lineup, except
-    that the catalog has Grok 4.7 on Vertex while Google's page lists Grok 4.6 and 4.20.
+    that the catalog had Grok 4.7 on Vertex before Google's page listed it. Google's page added it in its
+  2026-10-26 update (re-checked 2026-10-27), so the Google Cloud page shows it.
 - `/clouds`: a card per cloud (frontier models, labs, retirements in 12 months) and a matrix of the
   frontier labs' current lineups against the clouds: available or not, and the price against the
   lab's own API.
@@ -69,9 +85,16 @@ For teams that can only buy through their cloud.
   per model, and the page says so and links the cloud's own region table. With a zone set, prices
   and retirements are those of the zone's listings.
   - A lineup model with no listing in the zone is "On AWS, outside Europe" (or "regional endpoints
-    only" for Global) only when every listing of it on the cloud names a region (my call). When one
-    names none, it may be sold in the zone after all, so the row says "region not listed" and links
-    the cloud's own list. On 2026-10-27 that leaves Grok 4.7 on AWS as the only model placed
+    only" for Global) only when every listing of it on the cloud is in one of the five zones (my
+    call). When one names no region, or a region the page can't place (a spelling such as
+    "westeurope", or one outside the five zones such as ca-central-1), it may be sold in the zone
+    after all as far as the page can tell, so the row says "region not listed" and links the cloud's
+    own list.
+  - A model's "Next retirement" on a cloud is when the cloud retires all of it (or all bar some
+    regions); a part that goes sooner is shown under it as "First: ...". With only a part
+    scheduled, the cell says "Partly retires". The "Retiring" counts take whole retirements only.
+  - Lyria and other music models aren't chat models, whatever mode the source gives them, so they
+    stay out of a cloud's "other frontier models". On 2026-10-27 that leaves Grok 4.7 on AWS as the only model placed
     outside a zone.
 - Navigation (my call): Clouds sits between Labs and Hosts. With nine links, the header's search
   button shrinks to its icon between the lg and xl breakpoints so the row still fits at 1024px.

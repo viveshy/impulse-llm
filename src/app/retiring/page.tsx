@@ -173,7 +173,7 @@ export default async function RetiringPage({
         <p>
           The hosts&rsquo; own notices:{" "}
           {NOTICE_PAGES.map((n, i) => (
-            <span key={n.host}>
+            <span key={n.url}>
               {i > 0 && " · "}
               <a href={n.url} className="text-accent hover:underline">
                 {n.name}

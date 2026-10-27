@@ -12,11 +12,13 @@ import type { HostKind } from "./hosts";
 import { labFor } from "./labs";
 import { lineAndVersion } from "./lineage";
 import { displayName } from "./names";
-import { NOTICE_PAGES } from "./notices";
+import { noticeFor } from "./notices";
 import {
+  addDays,
   byNewest,
   daysBetween,
   frontierLineup,
+  headlineRetirement,
   hostRetirements,
   liveSuccessor,
   replacementFor,
@@ -30,10 +32,15 @@ export type WatchState = "model-gone" | "host-gone" | "pin-gone" | "retired" | "
 /** Retirements this close need acting on now. */
 export const ACT_WITHIN_DAYS = 90;
 
+/** A retirement stays on the row, for the calendar, this long after its day. */
+const RECENT_DAYS = 90;
+
 export interface WatchSuccessor {
   model: CanonicalModel;
-  /** Its listing on the watched host, in the same region where there is one; absent when the host doesn't serve it. */
+  /** Its live listing on the watched host, in the same region where there is one; absent when the host doesn't serve it. */
   listing?: Listing;
+  /** The host listed it but has retired it since. */
+  retiredHere?: true;
   /** Blended price against the watched listing's; null when either isn't a per-token price. */
   delta: number | null;
 }
@@ -45,16 +52,26 @@ export interface WatchRow {
   model?: CanonicalModel;
   hostSlug: string;
   hostName: string;
+  /** The catalog has this host, so it has a page. */
+  hostKnown: boolean;
+  /** For a host that doesn't list the model: how many other hosts serve it now. */
+  otherHosts?: number;
   /** The pinned listing, or the host's main one. */
   listing?: Listing;
   /** How many listings the host has of the model (fine-tunes aside). */
   hostListings: number;
   state: WatchState;
-  /** The host's scheduled retirements from today on, earliest first; a pinned row has at most one. */
+  /** The host's scheduled retirements still to come, earliest first; a pinned row has at most one. */
   retirements: HostRetirement[];
-  /** Days until the first of them. */
+  /** Its retirements of the last `RECENT_DAYS`, today's included: the calendar keeps them. */
+  recent: HostRetirement[];
+  /** Only part of the host's offer is scheduled to retire (a version, variant or region); the rest stays. */
+  partly?: true;
+  /** Days until the retirement that heads them (`headlineRetirement`). */
   daysLeft?: number;
   retiredOn?: string;
+  /** Retired bar these versions or regions, which the host still serves. */
+  except?: string[];
   /** The host only promises the model until this day ("not sooner than"). */
   notBefore?: string;
   /** What to move to when it retires or is gone; otherwise a newer model in its line. */
@@ -90,58 +107,85 @@ function lineHead(slug: string, index: CatalogIndex): CanonicalModel | undefined
     .sort(byNewest)[0];
 }
 
-function successorOn(next: CanonicalModel | undefined, hostSlug: string, watched: Listing | undefined): WatchSuccessor | undefined {
+function successorOn(
+  next: CanonicalModel | undefined,
+  hostSlug: string,
+  watched: Listing | undefined,
+  today: string,
+): WatchSuccessor | undefined {
   if (!next) return undefined;
-  const here = next.listings.filter((l) => l.host.slug === hostSlug && !l.fineTune && !l.commitment);
+  const listed = next.listings.filter((l) => l.host.slug === hostSlug && !l.fineTune && !l.commitment);
+  const here = listed.filter((l) => isLive(l, today));
   const sameRegion = watched?.region ? here.filter((l) => l.region === watched.region) : [];
   const listing = [...(sameRegion.length ? sameRegion : here)].sort(mainFirst)[0];
-  return { model: next, ...(listing ? { listing } : {}), delta: versus(listing, watched) };
+  return {
+    model: next,
+    ...(listing ? { listing } : listed.length ? { retiredHere: true as const } : {}),
+    delta: versus(listing, watched),
+  };
 }
 
 function watchRow(index: CatalogIndex, item: WatchItem, moves: Map<string, ListingMove>): WatchRow {
   const today = index.today;
   const model = index.bySlug.get(item.model);
   const here = model?.listings.filter((l) => l.host.slug === item.host && !l.fineTune) ?? [];
+  const host = index.hostBySlug.get(item.host);
+  const noticeUrl = noticeFor(item.host, model?.labId ?? labFor(item.model), here.map((l) => l.apiModelId));
   const base = {
     item,
     key: watchKey(item),
     name: model?.name ?? displayName(item.model),
     hostSlug: item.host,
-    hostName: index.hostBySlug.get(item.host)?.name ?? here[0]?.host.name ?? item.host,
+    hostName: host?.name ?? item.host,
+    hostKnown: !!host,
     hostListings: here.length,
     retirements: [],
-    ...(NOTICE_PAGES.some((n) => n.host === item.host) ? { noticeUrl: NOTICE_PAGES.find((n) => n.host === item.host)!.url } : {}),
+    recent: [],
+    ...(noticeUrl ? { noticeUrl } : {}),
   };
   if (!model) {
-    return { ...base, state: "model-gone", successor: successorOn(lineHead(item.model, index), item.host, undefined) };
+    return { ...base, state: "model-gone", successor: successorOn(lineHead(item.model, index), item.host, undefined, today) };
   }
 
   const pinned = item.pin ? here.find((l) => pinOf(l.id) === item.pin) : undefined;
   if (!here.length || (item.pin && !pinned)) {
+    const others = new Set(
+      model.listings.filter((l) => l.host.slug !== item.host && !l.fineTune && isLive(l, today)).map((l) => l.host.slug),
+    );
     return {
       ...base,
       model,
       state: here.length ? "pin-gone" : "host-gone",
-      successor: successorOn(replacementFor(model, today, index), item.host, undefined),
+      ...(here.length ? {} : { otherHosts: others.size }),
+      successor: successorOn(replacementFor(model, today, index), item.host, undefined, today),
     };
   }
 
   const scope = pinned ? [pinned] : here;
   const listing = pinned ?? [...here].sort(mainFirst)[0];
-  const retired = scope.every((l) => !isLive(l, today));
-  const upcoming = retired ? [] : hostRetirements({ ...model, listings: scope }).filter((r) => r.date >= today);
+  const all = hostRetirements({ ...model, listings: scope });
+  // A listing is gone on its retirement day.
+  const upcoming = all.filter((r) => r.date > today);
+  const past = all.filter((r) => r.date <= today);
+  const gone = scope.every((l) => !isLive(l, today));
+  // The host has retired all of it bar some versions or regions: retired, though those stay.
+  const cut = gone ? undefined : past.filter((r) => !r.only).at(-1);
+  const retired = gone || !!cut;
+  const headline = retired ? undefined : headlineRetirement(upcoming);
   const notBefore =
     listing.notBefore && listing.deprecationDate && listing.deprecationDate >= today ? listing.deprecationDate : undefined;
-  const state: WatchState = retired ? "retired" : upcoming.length ? "retiring" : notBefore ? "not-before" : "ok";
+  const state: WatchState = retired ? "retired" : headline ? "retiring" : notBefore ? "not-before" : "ok";
+  const partly = !!headline?.only;
 
   const next =
     state === "retired"
       ? replacementFor(model, today, index)
-      : state === "retiring"
-        ? replacementFor(model, upcoming[0].date, index)
+      : state === "retiring" && !partly
+        ? replacementFor(model, headline!.date, index)
         : liveSuccessor(model, index);
   const moved = scope.filter((l) => moves.has(l.id) && !NOT_A_PRICE.includes(l.host.kind)).sort(mainFirst)[0];
-  const retiredOn = scope.map(retiresOn).filter((d): d is string => !!d).sort().at(-1);
+  const retiredOn = cut ? cut.date : scope.map(retiresOn).filter((d): d is string => !!d).sort().at(-1);
+  const since = addDays(today, -RECENT_DAYS);
 
   return {
     ...base,
@@ -149,30 +193,38 @@ function watchRow(index: CatalogIndex, item: WatchItem, moves: Map<string, Listi
     listing,
     state,
     retirements: upcoming,
-    ...(upcoming.length ? { daysLeft: daysBetween(today, upcoming[0].date) } : {}),
+    recent: past.filter((r) => r.date >= since),
+    ...(partly ? { partly: true as const } : {}),
+    ...(headline ? { daysLeft: daysBetween(today, headline.date) } : {}),
     ...(retired && retiredOn ? { retiredOn } : {}),
+    ...(cut?.except ? { except: cut.except } : {}),
     ...(state === "not-before" ? { notBefore } : {}),
-    successor: successorOn(next, item.host, listing),
+    successor: successorOn(next, item.host, listing, today),
     ...(moved ? { priceMove: { ...moves.get(moved.id)!, listing: moved } } : {}),
   };
 }
 
+/** The row calls for moving off the model: it, the host's listing or the pinned version is gone, or the host retires all of it. */
+export const isMoving = (r: WatchRow) => r.state !== "ok" && r.state !== "not-before" && !r.partly;
+
 /** One row per item, what needs action first: gone, retired, then the soonest retirement. */
 export function watchRows(index: CatalogIndex, items: WatchItem[], changes: PriceChange[] = []): WatchRow[] {
   const moves = listingMoves(changes);
+  // A part retiring comes after every whole retirement, before nothing retiring at all.
+  const rank = (r: WatchRow) => (r.partly ? RANK.retiring + 0.5 : RANK[r.state]);
   const soonest = (r: WatchRow) => (r.state === "retiring" ? r.daysLeft! : 0);
   return items
     .map((item) => watchRow(index, item, moves))
-    .sort((a, b) => RANK[a.state] - RANK[b.state] || soonest(a) - soonest(b));
+    .sort((a, b) => rank(a) - rank(b) || soonest(a) - soonest(b));
 }
 
 export interface WatchSummary {
   total: number;
-  /** Gone, retired, or retiring within `ACT_WITHIN_DAYS`. */
+  /** Gone, retired, or retiring as a whole within `ACT_WITHIN_DAYS`. */
   act: number;
-  /** Retiring later than that. */
+  /** Retiring as a whole later than that. */
   later: number;
-  /** Nothing scheduled, but a newer model in the line is out. */
+  /** Nothing to move off yet, but a newer model in the line is out. */
   newer: number;
   /** A price move in the history window. */
   moved: number;
@@ -180,12 +232,12 @@ export interface WatchSummary {
 
 export function watchSummary(rows: WatchRow[]): WatchSummary {
   const retiringWithin = (r: WatchRow, within: boolean) =>
-    r.state === "retiring" && r.daysLeft! <= ACT_WITHIN_DAYS === within;
+    r.state === "retiring" && !r.partly && r.daysLeft! <= ACT_WITHIN_DAYS === within;
   return {
     total: rows.length,
     act: rows.filter((r) => RANK[r.state] <= RANK.retired || retiringWithin(r, true)).length,
     later: rows.filter((r) => retiringWithin(r, false)).length,
-    newer: rows.filter((r) => (r.state === "ok" || r.state === "not-before") && r.successor).length,
+    newer: rows.filter((r) => !isMoving(r) && r.successor).length,
     moved: rows.filter((r) => r.priceMove).length,
   };
 }

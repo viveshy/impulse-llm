@@ -185,6 +185,16 @@ export function AddToWatchlist({ items, preselect }: { items: WatchItem[]; prese
                         }}
                         className="sr-only"
                       />
+                      {/* The radio itself is hidden; this dot shows the choice by shape, not by the tint alone. */}
+                      <span
+                        aria-hidden
+                        className={clsx(
+                          "grid h-[18px] w-[18px] flex-none place-items-center rounded-full border-2",
+                          host === o.host.slug ? "border-accent" : "border-border-strong",
+                        )}
+                      >
+                        {host === o.host.slug && <span className="h-2 w-2 rounded-full bg-accent" />}
+                      </span>
                       <HostMark slug={o.host.slug} name={o.host.name} size={24} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14.5px] text-ink">{o.host.name}</span>

@@ -6,7 +6,7 @@
 import { cloudById, CLOUDS, ZONES, zoneOf, type Cloud, type CloudId, type ZoneId } from "@/lib/clouds";
 import { isFirstParty, isLive, isPriceOption } from "./group";
 import { LABS, type Lab, type LabId } from "./labs";
-import { addDays, byNewest, frontierLineup, hostRetirements, type HostRetirement } from "./select";
+import { addDays, byNewest, frontierLineup, headlineRetirement, hostRetirements, type HostRetirement } from "./select";
 import type { CanonicalModel, CatalogIndex, HostSummary, Listing } from "./types";
 
 const ZONE_IDS = ZONES.map((z) => z.id);
@@ -27,9 +27,14 @@ export interface CloudOffer {
   vsLab: number | null;
   /** The zones it is listed in on this cloud, whichever zone is chosen. */
   zones: ZoneId[];
-  /** The cloud's next scheduled retirement of it, or of part of it. */
+  /** The cloud's next retirement of all of it (or all of it bar some regions); failing that, of a part of it. */
   retires?: HostRetirement;
+  /** A retirement of only a part of it, before `retires`. */
+  sooner?: HostRetirement;
 }
+
+/** It retires as a whole, not just in part, on or before `until`. */
+export const retiresBy = (o: CloudOffer, until: string) => !!o.retires && !o.retires.only && o.retires.date <= until;
 
 function offerOn(m: CanonicalModel, cloud: Cloud, today: string, zone?: ZoneId): CloudOffer | null {
   const all = m.listings.filter((l) => cloud.hosts.includes(l.host.slug) && !l.fineTune && !l.commitment && isLive(l, today));
@@ -39,7 +44,9 @@ function offerOn(m: CanonicalModel, cloud: Cloud, today: string, zone?: ZoneId):
   const lab = m.reference;
   const vsLab =
     best && isFirstParty(lab, m.labId) && isPriceOption(lab) && lab.blended ? best.blended! / lab.blended - 1 : null;
-  const retires = hostRetirements({ ...m, listings }).find((r) => r.date >= today);
+  const upcoming = hostRetirements({ ...m, listings }).filter((r) => r.date > today);
+  const retires = headlineRetirement(upcoming);
+  const sooner = retires && upcoming[0] !== retires ? upcoming[0] : undefined;
   return {
     model: m,
     listings,
@@ -47,6 +54,7 @@ function offerOn(m: CanonicalModel, cloud: Cloud, today: string, zone?: ZoneId):
     vsLab,
     zones: ZONE_IDS.filter((z) => all.some((l) => zoneOf(l.region) === z)),
     ...(retires ? { retires } : {}),
+    ...(sooner ? { sooner } : {}),
   };
 }
 
@@ -62,8 +70,9 @@ export interface CloudService {
 export interface MissingModel {
   model: CanonicalModel;
   /**
-   * In a zone, the cloud lists it there too: "outside" the zone when every listing of it names a region, "unplaced"
-   * when one names none, so it may be sold in the zone all the same.
+   * In a zone, the cloud lists it elsewhere: "outside" the zone when every listing of it is in a zone we know,
+   * "unplaced" when one names no region, or one `zoneOf` can't place (a spelling such as "westeurope"), so it may be
+   * sold in the zone all the same.
    */
   onCloud?: "outside" | "unplaced";
   /** The other clouds that list it, in any region. */
@@ -145,7 +154,7 @@ export interface CloudSummary {
   carried: number;
   /** The labs whose lineup models it lists, in the usual lab order. */
   labs: LabId[];
-  /** Scheduled retirements of the frontier models on it in the next 12 months. */
+  /** Frontier models on it that it retires as a whole in the next 12 months. */
   retiring: number;
   zones: ZoneId[];
 }
@@ -167,7 +176,7 @@ export function cloudOverview(index: CatalogIndex): CloudOverview {
       services: p.services,
       carried: p.lineup.length,
       labs: LABS.map((l) => l.id).filter((id) => p.lineup.some((o) => o.model.labId === id)),
-      retiring: [...p.lineup, ...p.other].filter((o) => o.retires && o.retires.date <= yearOut).length,
+      retiring: [...p.lineup, ...p.other].filter((o) => retiresBy(o, yearOut)).length,
       zones: p.zones,
     })),
     lineupSize: groups.reduce((n, g) => n + g.models.length, 0),

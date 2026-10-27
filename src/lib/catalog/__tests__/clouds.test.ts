@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { zoneOf } from "@/lib/clouds";
 import { cloudOverview, cloudPage } from "../clouds";
-import { cloudIndex as index, zonedIndex } from "./cloud-fixture";
+import { cloudIndex as index, staggeredIndex, zonedIndex } from "./cloud-fixture";
 
 const slugs = (offers: { model: { slug: string } }[]) => offers.map((o) => o.model.slug);
 
@@ -52,6 +52,17 @@ describe("cloudPage", () => {
     expect(opus.retires).toMatchObject({ host: "Amazon Bedrock", date: "2027-03-01", only: ["us"] });
   });
 
+  it("heads an offer with the retirement of all of it, and keeps a part that goes sooner", () => {
+    const [sonnet] = cloudPage(staggeredIndex, "aws")!.lineup;
+    expect(sonnet.retires).toEqual({ host: "Amazon Bedrock", date: "2027-04-08", byLab: false });
+    expect(sonnet.sooner).toMatchObject({ date: "2026-12-01", only: ["us"] });
+  });
+
+  it("counts music models out of the frontier models a cloud serves", () => {
+    expect(staggeredIndex.bySlug.get("lyria-3-pro-preview")?.specialPurpose).toBe(true);
+    expect(cloudPage(staggeredIndex, "google-cloud")!.other).toEqual([]);
+  });
+
   it("keeps older frontier models the cloud still serves, after the lab has retired them, and drops what it retired", () => {
     // Claude 2.1 shipped over two years ago and Claude Instant has no date: stale listings, left out.
     expect(slugs(aws.other)).toEqual(["claude-sonnet-5"]);
@@ -76,7 +87,7 @@ describe("cloudPage", () => {
     expect(us.missing.find((m) => m.model.slug === "gemini-5-pro")?.onCloud).toBeUndefined();
   });
 
-  it("in a zone, places a model outside it only when every listing of it on the cloud names a region", () => {
+  it("in a zone, places a model outside it only when every listing of it on the cloud is in a zone we know", () => {
     const eu = cloudPage(zonedIndex, "aws", "eu")!;
     expect(slugs(eu.lineup)).toEqual(["claude-sonnet-6"]);
     const onCloud = (slug: string) => eu.missing.find((m) => m.model.slug === slug)?.onCloud;
@@ -118,7 +129,9 @@ describe("cloudOverview", () => {
       ["azure", 2, ["openai", "anthropic"]],
       ["google-cloud", 2, ["anthropic", "google"]],
     ]);
-    expect(o.clouds[0].retiring).toBe(2);
+    // Claude Sonnet 5 goes in January; only Claude Opus 6's US profile goes in March, so that one doesn't count.
+    expect(o.clouds[0].retiring).toBe(1);
+    expect(cloudOverview(staggeredIndex).clouds.find((c) => c.cloud.id === "aws")?.retiring).toBe(1);
   });
 
   it("lays the lineup out by lab against the clouds", () => {

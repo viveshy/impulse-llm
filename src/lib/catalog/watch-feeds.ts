@@ -6,8 +6,8 @@
 import { modelHref, SITE_URL } from "@/lib/routes";
 import { formatDate } from "@/lib/utils/format";
 import { hostLabel } from "./detail";
-import { daysBetween, retirementLabel } from "./select";
-import type { WatchRow } from "./watch";
+import { daysBetween, retirementLabel, type HostRetirement } from "./select";
+import { isMoving, type WatchRow } from "./watch";
 
 export interface FeedOptions {
   /** The watchlist page these feeds belong to. */
@@ -29,7 +29,9 @@ const addDays = (day: string, n: number) =>
 function moveTo(row: WatchRow): string | null {
   const s = row.successor;
   if (!s) return null;
-  if (!s.listing) return `Move to ${s.model.name} (not on ${row.hostName} yet)`;
+  // A host the catalog doesn't know: nothing to say about what it serves.
+  if (!row.hostKnown) return `Move to ${s.model.name}`;
+  if (!s.listing) return `Move to ${s.model.name} (${s.retiredHere ? "retired on" : "not on"} ${row.hostName}${s.retiredHere ? "" : " yet"})`;
   const pct = s.delta === null ? null : Math.round(s.delta * 100);
   const price = pct === null ? "" : pct === 0 ? ", same price" : `, ${Math.abs(pct)}% ${pct < 0 ? "less" : "more"}`;
   return `Move to ${s.model.name} (on ${row.hostName}${price})`;
@@ -77,7 +79,17 @@ const alarm = (days: number, summary: string) => [
   "END:VALARM",
 ];
 
-/** One all-day event per scheduled retirement, with reminders 30 and 7 days before. */
+/** What a retirement takes, for its event's id: "all", "only-fast-mode", "except-us". */
+const scopeId = (r: HostRetirement) =>
+  (r.only ? `only-${r.only.join("-") || "some"}` : r.except ? `except-${r.except.join("-")}` : "all")
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, "-");
+
+/**
+ * One all-day event per scheduled retirement, and per retirement of the last few months, with reminders 30 and 7 days
+ * before. An event's id names the row and what retires, not the day, so a postponed date moves the event rather than
+ * adding a second one; and the event stays on its day and after.
+ */
 export function watchCalendar(rows: WatchRow[], opts: FeedOptions): string {
   const lines = [
     "BEGIN:VCALENDAR",
@@ -91,10 +103,14 @@ export function watchCalendar(rows: WatchRow[], opts: FeedOptions): string {
     "X-PUBLISHED-TTL:PT6H",
   ];
   for (const row of rows) {
-    for (const r of row.retirements) {
+    const ids = new Set<string>();
+    for (const r of [...row.recent, ...row.retirements]) {
+      // Two retirements of the same part (rare: "some versions" twice) tell apart by their dates.
+      const id = ids.has(scopeId(r)) ? `${scopeId(r)}-${r.date}` : scopeId(r);
+      ids.add(id);
       const summary = `${row.name} retires on ${retirementLabel(r)}`;
       const description = [
-        `${retirementLabel(r)} retires ${row.name} on ${formatDate(r.date)}.`,
+        `${retirementLabel(r)} ${r.date <= opts.today ? "retired" : "retires"} ${row.name} on ${formatDate(r.date)}.`,
         nextStep(row),
         row.noticeUrl && `The host's notice: ${row.noticeUrl}`,
         `Your watchlist: ${opts.link}`,
@@ -103,7 +119,7 @@ export function watchCalendar(rows: WatchRow[], opts: FeedOptions): string {
         .join("\n");
       lines.push(
         "BEGIN:VEVENT",
-        `UID:${row.key}~${r.date}@${SITE_HOST}`,
+        `UID:${row.key}~${id}@${SITE_HOST}`,
         `DTSTAMP:${icsStamp(opts.stamp)}`,
         `DTSTART;VALUE=DATE:${icsDay(r.date)}`,
         `DTEND;VALUE=DATE:${icsDay(addDays(r.date, 1))}`,
@@ -143,8 +159,8 @@ interface FeedItem {
 }
 
 const GONE_TITLE: Partial<Record<WatchRow["state"], (r: WatchRow) => string>> = {
-  "model-gone": (r) => `No longer listed: ${r.name} on ${r.hostName}`,
-  "host-gone": (r) => `No longer on ${r.hostName}: ${r.name}`,
+  "model-gone": (r) => `Not listed: ${r.name} on ${r.hostName}`,
+  "host-gone": (r) => `Not on ${r.hostName}: ${r.name}`,
   "pin-gone": (r) => `Pinned version gone: ${r.name} on ${r.hostName}`,
 };
 
@@ -171,7 +187,7 @@ function feedItems(rows: WatchRow[], opts: FeedOptions): FeedItem[] {
       items.push({
         guid: `${row.key}~retired`,
         ...(row.retiredOn ? { day: row.retiredOn } : {}),
-        title: `Retired: ${row.name} on ${row.hostName}${row.retiredOn ? ` on ${formatDate(row.retiredOn)}` : ""}`,
+        title: `Retired: ${row.name} on ${row.hostName}${row.except ? ` (all but ${row.except.join(", ")})` : ""}${row.retiredOn ? ` on ${formatDate(row.retiredOn)}` : ""}`,
         ...act,
       });
     }
@@ -190,7 +206,7 @@ function feedItems(rows: WatchRow[], opts: FeedOptions): FeedItem[] {
       });
     }
     const newer = row.successor?.model;
-    if (newer && (row.state === "ok" || row.state === "not-before")) {
+    if (newer && !isMoving(row)) {
       items.push({
         guid: `${row.key}~newer~${newer.slug}`,
         ...(newer.releaseDate ? { day: newer.releaseDate } : {}),

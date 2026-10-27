@@ -17,17 +17,19 @@ const ZONE_NAME = new Map(ZONES.map((z) => [z.id, z.name]));
 export const zoneNames = (zones: ZoneId[]) => zones.map((z) => ZONE_NAME.get(z)).join(", ");
 
 /** `named`: the cloud sells through more than one service, so say which one retires it. */
-function Retires({ r, today, named }: { r?: HostRetirement; today: string; named: boolean }) {
+function Retires({ offer, today, named }: { offer: CloudOffer; today: string; named: boolean }) {
+  const r = offer.retires;
   if (!r) return <span className="text-ink-3">-</span>;
   const days = daysBetween(today, r.date);
+  const when = (x: HostRetirement) => [formatDate(x.date), named ? x.host : null, retirementScope(x)].filter(Boolean).join(" · ");
   return (
     <div className="space-y-1">
-      <Badge tone={urgency(days)} icon={<CalendarClock size={12} aria-hidden />}>
-        Retires {formatDaysLeft(days)}
+      {/* Only a version or region going isn't urgent: the model itself stays. */}
+      <Badge tone={r.only ? undefined : urgency(days)} icon={<CalendarClock size={12} aria-hidden />}>
+        {r.only ? "Partly retires" : "Retires"} {formatDaysLeft(days)}
       </Badge>
-      <div className="text-[13px] text-ink-3">
-        {[formatDate(r.date), named ? r.host : null, retirementScope(r)].filter(Boolean).join(" · ")}
-      </div>
+      <div className="text-[13px] text-ink-3">{when(r)}</div>
+      {offer.sooner && <div className="text-[13px] text-ink-3">First: {when(offer.sooner)}</div>}
     </div>
   );
 }
@@ -84,7 +86,7 @@ export function CloudOffersTable({
                     {regions && o.zones.length > 0 && (
                       <div className="text-[13px] text-ink-3">Regions: {zoneNames(o.zones)}</div>
                     )}
-                    {o.retires && <Retires r={o.retires} today={today} named={services} />}
+                    {o.retires && <Retires offer={o} today={today} named={services} />}
                   </div>
                 </td>
                 {released && (
@@ -121,7 +123,7 @@ export function CloudOffersTable({
                   </td>
                 )}
                 <td className="hidden sm:table-cell">
-                  <Retires r={o.retires} today={today} named={services} />
+                  <Retires offer={o} today={today} named={services} />
                 </td>
               </tr>
             );

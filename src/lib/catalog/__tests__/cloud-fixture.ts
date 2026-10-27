@@ -59,3 +59,23 @@ export const zonedIndex = buildIndex(
   [provider("a", "Anthropic", "frontier"), provider("b", "AWS - Bedrock")],
   { now: TODAY },
 );
+
+/** Claude Sonnet 6 on Bedrock, whose US profile goes on 1 Dec 2026 and everything else on 8 Apr 2027; and Lyria on Vertex. */
+export const staggeredIndex = buildIndex(
+  [
+    model({ id: "a-sonnet6", name: "claude-sonnet-6", providerId: "a", releaseDate: "2026-09-28", input: 3, output: 15 }),
+    model({ id: "b-sonnet6", name: "anthropic.claude-sonnet-6", providerId: "b", deprecationDate: "2027-04-08", input: 3, output: 15 }),
+    model({ id: "b-sonnet6-g", name: "global.anthropic.claude-sonnet-6", providerId: "b", deprecationDate: "2027-04-08", input: 3, output: 15 }),
+    model({ id: "b-sonnet6-us", name: "us.anthropic.claude-sonnet-6", providerId: "b", deprecationDate: "2026-12-01", input: 3.3, output: 16.5 }),
+    // Lyria makes music: not a model to chat with, whatever mode the source gives it.
+    model({ id: "g-lyria", name: "lyria-3-pro-preview", providerId: "g", releaseDate: "2026-08-01" }),
+    model({ id: "v-lyria", name: "lyria-3-pro-preview", providerId: "v" }),
+  ],
+  [
+    provider("a", "Anthropic", "frontier"),
+    provider("g", "Google AI Studio - Gemini", "frontier"),
+    provider("b", "AWS - Bedrock"),
+    provider("v", "Google - Vertex AI"),
+  ],
+  { now: TODAY },
+);

@@ -2,30 +2,30 @@ import { describe, expect, it } from "vitest";
 import type { PriceChange } from "@/lib/domain/types";
 import { pinOf, type WatchItem } from "@/lib/watchlist";
 import { buildIndex } from "../group";
-import { exampleWatchlist, watchOptions, watchRows, watchSummary } from "../watch";
+import { exampleWatchlist, isMoving, watchOptions, watchRows, watchSummary } from "../watch";
 import { loadSample, model, provider, TODAY } from "./helpers";
 
-const index = buildIndex(
-  [
-    // OpenAI retires gpt-5 on 11 Dec 2026; Azure on 9 Feb 2027, except in its US data zone.
-    model({ id: "o-gpt5", name: "gpt-5", providerId: "o", releaseDate: "2025-08-07", deprecationDate: "2026-12-11", input: 1.25, output: 10 }),
-    model({ id: "az-gpt5", name: "gpt-5", providerId: "az", deprecationDate: "2027-02-09", input: 1.25, output: 10 }),
-    model({ id: "az-gpt5-eu", name: "gpt-5", providerId: "az", route: "eu", deprecationDate: "2027-02-09", input: 1.375, output: 11 }),
-    model({ id: "az-gpt5-us", name: "gpt-5", providerId: "az", route: "us", input: 1.375, output: 11 }),
-    // The newest in the line, on OpenAI and on Azure (global and EU).
-    model({ id: "o-gpt55", name: "gpt-5.5", providerId: "o", releaseDate: "2026-04-01", input: 2, output: 12 }),
-    model({ id: "az-gpt55", name: "gpt-5.5", providerId: "az", input: 2, output: 12 }),
-    model({ id: "az-gpt55-eu", name: "gpt-5.5", providerId: "az", route: "eu", input: 2.2, output: 13.2 }),
-    // Already retired on OpenAI.
-    model({ id: "o-gpt41", name: "gpt-4.1", providerId: "o", releaseDate: "2025-04-14", deprecationDate: "2026-10-01" }),
-    // Nothing scheduled.
-    model({ id: "b-opus", name: "anthropic.claude-opus-5-5", providerId: "b", releaseDate: "2026-09-01", input: 5, output: 25 }),
-  ],
-  [provider("o", "OpenAI", "frontier"), provider("az", "Azure"), provider("b", "AWS - Bedrock")],
-  { now: TODAY },
-);
+const MODELS = [
+  // OpenAI retires gpt-5 on 11 Dec 2026; Azure on 9 Feb 2027, except in its US data zone.
+  model({ id: "o-gpt5", name: "gpt-5", providerId: "o", releaseDate: "2025-08-07", deprecationDate: "2026-12-11", input: 1.25, output: 10 }),
+  model({ id: "az-gpt5", name: "gpt-5", providerId: "az", deprecationDate: "2027-02-09", input: 1.25, output: 10 }),
+  model({ id: "az-gpt5-eu", name: "gpt-5", providerId: "az", route: "eu", deprecationDate: "2027-02-09", input: 1.375, output: 11 }),
+  model({ id: "az-gpt5-us", name: "gpt-5", providerId: "az", route: "us", input: 1.375, output: 11 }),
+  // The newest in the line, on OpenAI and on Azure (global and EU).
+  model({ id: "o-gpt55", name: "gpt-5.5", providerId: "o", releaseDate: "2026-04-01", input: 2, output: 12 }),
+  model({ id: "az-gpt55", name: "gpt-5.5", providerId: "az", input: 2, output: 12 }),
+  model({ id: "az-gpt55-eu", name: "gpt-5.5", providerId: "az", route: "eu", input: 2.2, output: 13.2 }),
+  // Already retired on OpenAI.
+  model({ id: "o-gpt41", name: "gpt-4.1", providerId: "o", releaseDate: "2025-04-14", deprecationDate: "2026-10-01" }),
+  // Nothing scheduled.
+  model({ id: "b-opus", name: "anthropic.claude-opus-5-5", providerId: "b", releaseDate: "2026-09-01", input: 5, output: 25 }),
+];
+const PROVIDERS = [provider("o", "OpenAI", "frontier"), provider("az", "Azure"), provider("b", "AWS - Bedrock")];
+const index = buildIndex(MODELS, PROVIDERS, { now: TODAY });
 
 const row = (item: WatchItem, changes: PriceChange[] = []) => watchRows(index, [item], changes)[0];
+/** The same catalog seen on another day. */
+const on = (day: string, item: WatchItem) => watchRows(buildIndex(MODELS, PROVIDERS, { now: new Date(day) }), [item])[0];
 
 const change = (listingId: string, from: [number, number], to: [number, number], at: string): PriceChange => ({
   listingId,
@@ -140,6 +140,114 @@ describe("watchRows", () => {
   it("links the host's own retirement notice when we know it", () => {
     expect(row({ model: "gpt-5", host: "openai" }).noticeUrl).toMatch(/^https:\/\/developers\.openai\.com\//);
     expect(row({ model: "claude-opus-5-5", host: "amazon-bedrock" }).noticeUrl).toMatch(/docs\.aws\.amazon\.com/);
+  });
+
+  it("links the notice for the lab's models on that host, and the page a date was checked on", () => {
+    const idx = buildIndex(
+      [
+        model({ id: "v-gem", name: "gemini-3.5-flash", providerId: "v", releaseDate: "2026-05-19" }),
+        model({ id: "v-son", name: "claude-sonnet-5@default", providerId: "v", deprecationDate: "2026-12-24" }),
+        model({ id: "v-opus", name: "claude-opus-5-5", providerId: "v", releaseDate: "2026-09-01" }),
+        model({ id: "v-grok", name: "grok-4.7", providerId: "v", releaseDate: "2026-10-01" }),
+        model({ id: "af-opus", name: "claude-opus-5-5", providerId: "af" }),
+      ],
+      [provider("v", "Google - Vertex AI"), provider("af", "Azure AI")],
+      { now: TODAY },
+    );
+    const notice = (m: string, host: string) => watchRows(idx, [{ model: m, host }])[0].noticeUrl;
+    expect(notice("gemini-3-5-flash", "vertex-ai")).toBe(
+      "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions",
+    );
+    // Claude on Vertex: the model's own page where we checked the date, else Vertex's Claude page; never Gemini's.
+    expect(notice("claude-sonnet-5", "vertex-ai")).toBe(
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/sonnet-5",
+    );
+    expect(notice("claude-opus-5-5", "vertex-ai")).toBe(
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude",
+    );
+    expect(notice("grok-4-7", "vertex-ai")).toBeUndefined();
+    expect(notice("claude-opus-5-5", "azure-ai-foundry")).toMatch(/learn\.microsoft\.com\/.*model-retirement-schedule/);
+  });
+
+  it("reads as retired once the host retires all of it bar some regions, and says which stay", () => {
+    const r = on("2027-02-10T12:00:00Z", { model: "gpt-5", host: "azure-openai" });
+    expect(r.state).toBe("retired");
+    expect(r.retiredOn).toBe("2027-02-09");
+    expect(r.except).toEqual(["us"]);
+    expect(r.retirements).toEqual([]);
+    expect(r.successor?.model.slug).toBe("gpt-5-5");
+    expect(isMoving(r)).toBe(true);
+  });
+
+  it("keeps a retirement among the recent ones on its day and after, for the calendar", () => {
+    const r = on("2026-12-11T00:30:00Z", { model: "gpt-5", host: "openai" });
+    expect(r.state).toBe("retired");
+    expect(r.recent).toEqual([{ host: "OpenAI", date: "2026-12-11", byLab: true }]);
+    expect(on("2027-01-05T12:00:00Z", { model: "gpt-5", host: "openai" }).recent).toHaveLength(1);
+    expect(on("2027-06-01T12:00:00Z", { model: "gpt-5", host: "openai" }).recent).toEqual([]);
+  });
+
+  it("heads the row with the retirement of the whole model, not of a part that goes sooner", () => {
+    const idx = buildIndex(
+      [
+        model({ id: "a-opus", name: "claude-opus-5-5", providerId: "a", releaseDate: "2026-09-01", input: 5, output: 25 }),
+        model({ id: "af-opus", name: "claude-opus-5-5", providerId: "af", deprecationDate: "2027-09-18", input: 5, output: 25 }),
+        model({ id: "af-fast", name: "claude-opus-5-5-fast", providerId: "af", deprecationDate: "2027-01-15", input: 30, output: 150 }),
+        model({ id: "af-son", name: "claude-sonnet-5-5", providerId: "af", input: 3, output: 15 }),
+        model({ id: "af-son-fast", name: "claude-sonnet-5-5-fast", providerId: "af", deprecationDate: "2027-01-15", input: 18, output: 90 }),
+      ],
+      [provider("a", "Anthropic", "frontier"), provider("af", "Azure AI")],
+      { now: TODAY },
+    );
+    const [opus, sonnet] = watchRows(idx, [
+      { model: "claude-opus-5-5", host: "azure-ai-foundry" },
+      { model: "claude-sonnet-5-5", host: "azure-ai-foundry" },
+    ]);
+    expect(opus.state).toBe("retiring");
+    expect(opus.partly).toBeUndefined();
+    expect(opus.daysLeft).toBe(327);
+    expect(opus.retirements.map((r) => [r.date, r.only ?? null])).toEqual([
+      ["2027-01-15", ["fast mode"]],
+      ["2027-09-18", null],
+    ]);
+    // Only fast mode goes: a part, so nothing to act on and nothing to move off.
+    expect(sonnet.state).toBe("retiring");
+    expect(sonnet.partly).toBe(true);
+    expect(sonnet.daysLeft).toBe(81);
+    expect(isMoving(sonnet)).toBe(false);
+    expect(watchSummary([opus, sonnet])).toMatchObject({ act: 0, later: 1 });
+    // The whole retirement sorts ahead of the partial one.
+    expect(watchRows(idx, [sonnet.item, opus.item]).map((r) => r.item.model)).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
+  });
+
+  it("doesn't offer a successor's listing the host has already retired", () => {
+    const idx = buildIndex(
+      [
+        model({ id: "o-gpt5", name: "gpt-5", providerId: "o", releaseDate: "2025-08-07", input: 1.25, output: 10 }),
+        model({ id: "o-gpt55", name: "gpt-5.5", providerId: "o", releaseDate: "2026-04-01", input: 2, output: 12 }),
+        model({ id: "az-gpt5", name: "gpt-5", providerId: "az", deprecationDate: "2027-02-09", input: 1.25, output: 10 }),
+        model({ id: "az-gpt55", name: "gpt-5.5", providerId: "az", deprecationDate: "2026-10-01", input: 2, output: 12 }),
+      ],
+      [provider("o", "OpenAI", "frontier"), provider("az", "Azure")],
+      { now: TODAY },
+    );
+    const [r] = watchRows(idx, [{ model: "gpt-5", host: "azure-openai" }]);
+    expect(r.successor?.model.slug).toBe("gpt-5-5");
+    expect(r.successor?.listing).toBeUndefined();
+    expect(r.successor?.retiredHere).toBe(true);
+    expect(r.successor?.delta).toBeNull();
+  });
+
+  it("tells a host that doesn't list the model from one the catalog doesn't know", () => {
+    const [made, openai, retired] = watchRows(index, [
+      { model: "gpt-5", host: "made-up-host" },
+      { model: "claude-opus-5-5", host: "openai" },
+      { model: "gpt-4-1", host: "amazon-bedrock" },
+    ]);
+    expect(made).toMatchObject({ state: "host-gone", hostKnown: false, hostName: "made-up-host" });
+    expect(openai).toMatchObject({ state: "host-gone", hostKnown: true, otherHosts: 1 });
+    // Every host that listed it has retired it.
+    expect(retired).toMatchObject({ state: "host-gone", hostKnown: true, otherHosts: 0 });
   });
 });
 

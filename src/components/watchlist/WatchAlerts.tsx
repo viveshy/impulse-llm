@@ -76,8 +76,10 @@ export function WatchAlerts({ w }: { w: string }) {
             </>
           }
         >
-          Each retirement as an all-day event, with reminders 30 and 7 days ahead. In Google Calendar, add it
-          &ldquo;From URL&rdquo; with the copied address.
+          Each retirement as an all-day event. The file asks for reminders 30 and 7 days ahead, but Google Calendar
+          ignores them and Apple Calendar drops them from subscriptions unless you keep alerts, so set your
+          calendar&rsquo;s own notifications too. In Google Calendar, add it &ldquo;From URL&rdquo; with the copied
+          address.
         </Row>
         <Row
           icon={<Rss size={18} />}

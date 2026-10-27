@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Fragment } from "react";
 import { Check } from "lucide-react";
 import type { CloudOffer, CloudOverview } from "@/lib/catalog/clouds";
 import { cloudHref, labHref, modelHref } from "@/lib/routes";
@@ -51,37 +50,36 @@ export function CloudMatrix({ overview }: { overview: CloudOverview }) {
             ))}
           </tr>
         </thead>
-        <tbody>
-          {overview.rows.map(({ lab, models }) => (
-            <Fragment key={lab.id}>
-              <tr>
-                <th colSpan={clouds.length + 1} scope="colgroup" className="bg-bg pt-4 text-ink-2">
-                  <Link href={labHref(lab.id)} className="inline-flex items-center gap-2 hover:text-ink hover:underline">
-                    <LabMark labId={lab.id} name={lab.name} size={20} />
-                    {lab.name}
+        {/* One body per lab, headed by the lab: a screen reader names the lab with each of its models. */}
+        {overview.rows.map(({ lab, models }) => (
+          <tbody key={lab.id}>
+            <tr>
+              <th colSpan={clouds.length + 1} scope="rowgroup" className="bg-bg pt-4 text-ink-2">
+                <Link href={labHref(lab.id)} className="inline-flex items-center gap-2 hover:text-ink hover:underline">
+                  <LabMark labId={lab.id} name={lab.name} size={20} />
+                  {lab.name}
+                </Link>
+              </th>
+            </tr>
+            {models.map(({ model, cells }) => (
+              <tr key={model.slug}>
+                <th scope="row" className="text-[14px] font-normal">
+                  <Link href={modelHref(model)} className="font-medium text-ink hover:text-accent hover:underline">
+                    {model.name}
                   </Link>
+                  {model.releaseDate && (
+                    <span className="ml-2 hidden text-[12.5px] text-ink-3 sm:inline">{formatReleaseDate(model.releaseDate)}</span>
+                  )}
                 </th>
+                {clouds.map((c) => (
+                  <td key={c.id} className="text-center">
+                    <Cell offer={cells[c.id]} cloud={c.name} />
+                  </td>
+                ))}
               </tr>
-              {models.map(({ model, cells }) => (
-                <tr key={model.slug}>
-                  <th scope="row" className="text-[14px] font-normal">
-                    <Link href={modelHref(model)} className="font-medium text-ink hover:text-accent hover:underline">
-                      {model.name}
-                    </Link>
-                    {model.releaseDate && (
-                      <span className="ml-2 hidden text-[12.5px] text-ink-3 sm:inline">{formatReleaseDate(model.releaseDate)}</span>
-                    )}
-                  </th>
-                  {clouds.map((c) => (
-                    <td key={c.id} className="text-center">
-                      <Cell offer={cells[c.id]} cloud={c.name} />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </Fragment>
-          ))}
-        </tbody>
+            ))}
+          </tbody>
+        ))}
       </table>
     </div>
   );

@@ -74,7 +74,7 @@ describe("checked retirement notices", () => {
       expect(n.notBefore || n.reported !== n.date).toBe(true);
     }
     for (const page of NOTICE_PAGES) {
-      expect(hosts).toContain(page.host);
+      for (const host of page.hosts) expect(hosts).toContain(host);
       expect(page.url).toMatch(/^https:\/\//);
     }
   });

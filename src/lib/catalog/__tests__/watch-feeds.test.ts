@@ -6,18 +6,16 @@ import { watchRows } from "../watch";
 import { watchCalendar, watchFeed } from "../watch-feeds";
 import { model, provider, TODAY } from "./helpers";
 
-const index = buildIndex(
-  [
-    model({ id: "o-gpt5", name: "gpt-5", providerId: "o", releaseDate: "2025-08-07", deprecationDate: "2026-12-11", input: 1.25, output: 10 }),
-    model({ id: "o-gpt55", name: "gpt-5.5", providerId: "o", releaseDate: "2026-04-01", input: 2, output: 12 }),
-    model({ id: "o-mini", name: "gpt-5.4-mini", providerId: "o", releaseDate: "2026-03-17", deprecationDate: "2026-11-01", input: 0.75, output: 4.5 }),
-    model({ id: "o-nano", name: "gpt-5.4-nano", providerId: "o", releaseDate: "2026-03-17", deprecationDate: "2027-06-01", input: 0.2, output: 1.25 }),
-    model({ id: "o-gpt41", name: "gpt-4.1", providerId: "o", releaseDate: "2025-04-14", input: 2, output: 8 }),
-    model({ id: "b-opus", name: "anthropic.claude-opus-5-5", providerId: "b", releaseDate: "2026-09-01", input: 5, output: 25 }),
-  ],
-  [provider("o", "OpenAI", "frontier"), provider("b", "AWS - Bedrock")],
-  { now: TODAY },
-);
+const MODELS = [
+  model({ id: "o-gpt5", name: "gpt-5", providerId: "o", releaseDate: "2025-08-07", deprecationDate: "2026-12-11", input: 1.25, output: 10 }),
+  model({ id: "o-gpt55", name: "gpt-5.5", providerId: "o", releaseDate: "2026-04-01", input: 2, output: 12 }),
+  model({ id: "o-mini", name: "gpt-5.4-mini", providerId: "o", releaseDate: "2026-03-17", deprecationDate: "2026-11-01", input: 0.75, output: 4.5 }),
+  model({ id: "o-nano", name: "gpt-5.4-nano", providerId: "o", releaseDate: "2026-03-17", deprecationDate: "2027-06-01", input: 0.2, output: 1.25 }),
+  model({ id: "o-gpt41", name: "gpt-4.1", providerId: "o", releaseDate: "2025-04-14", input: 2, output: 8 }),
+  model({ id: "b-opus", name: "anthropic.claude-opus-5-5", providerId: "b", releaseDate: "2026-09-01", input: 5, output: 25 }),
+];
+const PROVIDERS = [provider("o", "OpenAI", "frontier"), provider("b", "AWS - Bedrock")];
+const index = buildIndex(MODELS, PROVIDERS, { now: TODAY });
 
 const items: WatchItem[] = [
   { model: "gpt-5", host: "openai" },
@@ -56,8 +54,26 @@ describe("watchCalendar", () => {
     const gpt5 = events.find((e) => e.includes("SUMMARY:GPT-5 retires on OpenAI"))!;
     expect(gpt5).toContain("DTSTART;VALUE=DATE:20261211\r\n");
     expect(gpt5).toContain("DTEND;VALUE=DATE:20261212\r\n");
-    expect(gpt5).toContain("UID:gpt-5@openai~2026-12-11@impulse.viveshy.com\r\n");
+    expect(gpt5).toContain("UID:gpt-5@openai~all@impulse.viveshy.com\r\n");
     expect(gpt5).toContain("DTSTAMP:20261026T064100Z\r\n");
+  });
+
+  it("keeps an event on its day, when the model has just retired, under the same id", () => {
+    const onTheDay = buildIndex(MODELS, PROVIDERS, { now: new Date("2026-12-11T00:30:00Z") });
+    const ics2 = watchCalendar(watchRows(onTheDay, [{ model: "gpt-5", host: "openai" }]), { ...opts, today: onTheDay.today });
+    expect(ics2).toContain("DTSTART;VALUE=DATE:20261211\r\n");
+    expect(ics2).toContain("UID:gpt-5@openai~all@impulse.viveshy.com\r\n");
+  });
+
+  it("keeps an event's id when the host moves the date, so an imported calendar updates it", () => {
+    const later = buildIndex(
+      MODELS.map((m) => (m.id === "o-gpt5" ? { ...m, deprecationDate: "2027-01-15" } : m)),
+      PROVIDERS,
+      { now: TODAY },
+    );
+    const ics2 = watchCalendar(watchRows(later, [{ model: "gpt-5", host: "openai" }]), opts);
+    expect(ics2).toContain("DTSTART;VALUE=DATE:20270115\r\n");
+    expect(ics2).toContain("UID:gpt-5@openai~all@impulse.viveshy.com\r\n");
   });
 
   it("reminds 30 and 7 days ahead", () => {
@@ -102,11 +118,30 @@ describe("watchFeed", () => {
   it("reports price moves, newer models and models that are gone", () => {
     expect(titles).toContain("Price cut: Claude Opus 5.5 on Amazon Bedrock, 17% lower");
     expect(titles).toContain("Newer than GPT-4.1: GPT-5.5");
-    expect(titles).toContain("No longer listed: GPT-9 on OpenAI");
+    expect(titles).toContain("Not listed: GPT-9 on OpenAI");
+  });
+
+  it("doesn't say what a host it doesn't know serves", () => {
+    const feed = watchFeed(watchRows(index, [{ model: "gpt-5", host: "made-up-host" }]), opts);
+    expect(feed).toContain("<title>Not on made-up-host: GPT-5</title>");
+    expect(feed).toContain("<description>Move to GPT-5.5.</description>");
+  });
+
+  it("says which regions stay when the host retires all of it but some", () => {
+    const idx = buildIndex(
+      [
+        model({ id: "az-gpt5", name: "gpt-5", providerId: "az", deprecationDate: "2026-10-20", input: 1.25, output: 10 }),
+        model({ id: "az-gpt5-gov", name: "gpt-5", providerId: "az", route: "us-gov", input: 1.25, output: 10 }),
+      ],
+      [provider("az", "Azure")],
+      { now: TODAY },
+    );
+    const feed = watchFeed(watchRows(idx, [{ model: "gpt-5", host: "azure-openai" }]), { ...opts, today: idx.today });
+    expect(feed).toContain("<title>Retired: GPT-5 on Azure OpenAI (all but US government regions) on 20 Oct 2026</title>");
   });
 
   it("leaves an undated event undated rather than inventing a day", () => {
-    const gone = items.find((i) => i.includes("No longer listed"))!;
+    const gone = items.find((i) => i.includes("Not listed: GPT-9"))!;
     expect(gone).not.toContain("<pubDate>");
   });
 

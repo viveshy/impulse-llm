@@ -6,6 +6,7 @@
  * fix upstream wins over ours.
  */
 import type { DeprecationStatus } from "@/lib/domain/types";
+import type { LabId } from "./labs";
 
 export interface Notice {
   /** Host slug. */
@@ -116,15 +117,38 @@ export const NOTICES: Notice[] = [
   },
 ];
 
+export interface NoticePage {
+  /** Host slugs that publish their dates here. */
+  hosts: string[];
+  /** Only for these labs' models; any lab's when left out. */
+  labs?: LabId[];
+  name: string;
+  url: string;
+}
+
 /** Where each host publishes its retirement dates. */
-export const NOTICE_PAGES: { host: string; name: string; url: string }[] = [
-  { host: "openai", name: "OpenAI", url: OPENAI },
-  { host: "anthropic", name: "Anthropic", url: "https://platform.claude.com/docs/en/about-claude/model-deprecations" },
-  { host: "google-ai-studio", name: "Gemini API", url: GEMINI_API },
-  { host: "vertex-ai", name: "Vertex AI", url: VERTEX },
-  { host: "azure-openai", name: "Microsoft Foundry", url: AZURE },
-  { host: "amazon-bedrock", name: "Amazon Bedrock", url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html" },
+export const NOTICE_PAGES: NoticePage[] = [
+  { hosts: ["openai"], name: "OpenAI", url: OPENAI },
+  { hosts: ["anthropic"], name: "Anthropic", url: "https://platform.claude.com/docs/en/about-claude/model-deprecations" },
+  { hosts: ["google-ai-studio"], name: "Gemini API", url: GEMINI_API },
+  { hosts: ["vertex-ai"], labs: ["google"], name: "Vertex AI", url: VERTEX },
+  // Vertex gives each Claude model its retirement date on that model's page, linked from this one.
+  { hosts: ["vertex-ai"], labs: ["anthropic"], name: "Claude on Vertex AI", url: VERTEX_CLAUDE },
+  // One schedule for Azure OpenAI and for the models Foundry sells directly (Claude, Grok, DeepSeek...).
+  { hosts: ["azure-openai", "azure-ai-foundry"], name: "Microsoft Foundry", url: AZURE },
+  {
+    hosts: ["amazon-bedrock"],
+    name: "Amazon Bedrock",
+    url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
+  },
 ];
+
+/** Where a host announces the retirement of a lab's model: the page we checked one of these listings on, else its page for that lab's models. */
+export function noticeFor(host: string, labId: LabId | null, apiModelIds: string[]): string | undefined {
+  const checked = NOTICES.find((n) => n.host === host && n.ids.some((id) => apiModelIds.includes(id)));
+  if (checked) return checked.source;
+  return NOTICE_PAGES.find((p) => p.hosts.includes(host) && (!p.labs || (!!labId && p.labs.includes(labId))))?.url;
+}
 
 /** The day the newest entry was checked. */
 export const NOTICES_CHECKED = NOTICES.map((n) => n.checked).sort().at(-1)!;

@@ -28,6 +28,8 @@ export const metadata: Metadata = {
   alternates: { types: { "application/rss+xml": [{ url: "/releases/feed.xml", title: "Impulse releases" }] } },
   openGraph: { siteName: "Impulse", type: "website" },
   twitter: { card: "summary_large_image" },
+  // Proves ownership to Bing Webmaster Tools.
+  verification: { other: { "msvalidate.01": "4D7BD6586CF93D02C4FE5985E0D41ABE" } },
 };
 
 export const viewport: Viewport = {
